@@ -1,0 +1,48 @@
+# Local environment and credentials (keep the configuration template).
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+.aws/
+.codex/
+
+# Python dependencies, caches and test reports.
+.venv/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Runtime data and databases, including backups and SQLite sidecars.
+backend/data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+*.pid
+
+# Frontend dependencies and generated build output; keep lockfiles and patches.
+backend/static/
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+
+# Local editor and operating system files.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

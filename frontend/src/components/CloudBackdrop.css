@@ -1,0 +1,97 @@
+.cloud-page {
+  position: relative;
+  isolation: isolate;
+}
+.cloud-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 9% 12%, #cce7ff 0, transparent 44%),
+    radial-gradient(ellipse at 90% 80%, #d0ecef 0, transparent 42%),
+    radial-gradient(ellipse at 80% 8%, #e0e5ff 0, transparent 37%),
+    linear-gradient(135deg, #eff7ff, #f9fbff 48%, #edf7fa);
+}
+.cloud-backdrop-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(#84a5cc 0.8px, transparent 0.8px);
+  background-size: 26px 26px;
+  opacity: 0.25;
+  mask-image: linear-gradient(
+    110deg,
+    #000,
+    transparent 45%,
+    transparent 65%,
+    #000
+  );
+}
+.cloud-backdrop-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 1200px;
+  color: #7dadd4;
+}
+.cloud-backdrop-orbits {
+  stroke: #92b6d4;
+  stroke-width: 1;
+  opacity: 0.18;
+}
+.cloud-backdrop-links {
+  stroke: #90b2d3;
+  stroke-width: 1;
+  stroke-dasharray: 4 8;
+  opacity: 0.45;
+}
+.cloud-backdrop-links circle {
+  fill: #a7c6e3;
+  stroke: #fff;
+  stroke-dasharray: none;
+  stroke-width: 2;
+}
+.cloud-backdrop-cloud {
+  opacity: 0.38;
+  fill: #ffffff40;
+}
+.cloud-backdrop-tile {
+  color: #82a9d0;
+}
+.cloud-backdrop-tile > rect {
+  fill: #ffffff70;
+  stroke: #ffffffd9;
+  stroke-width: 1.5;
+}
+@media (max-width: 600px) {
+  .cloud-backdrop-art {
+    width: 900px;
+    max-width: none;
+    left: calc(50% - 450px);
+    opacity: 0.65;
+  }
+  .cloud-backdrop-grid {
+    opacity: 0.18;
+  }
+  .cloud-backdrop-cloud-top {
+    x: 760px;
+    y: 40px;
+  }
+  .cloud-backdrop-cloud-bottom {
+    x: 500px;
+    y: 710px;
+  }
+  .cloud-backdrop-folder {
+    transform: translate(540px, 115px) rotate(-12deg);
+  }
+  .cloud-backdrop-film {
+    transform: translate(790px, 805px) rotate(12deg);
+  }
+  .cloud-backdrop-image,
+  .cloud-backdrop-document,
+  .cloud-backdrop-links {
+    display: none;
+  }
+}
