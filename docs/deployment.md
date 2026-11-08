@@ -119,6 +119,14 @@ curl -fsS https://pan.zhcn.win/api/health
 
 更新步骤：先按下文备份数据，在开发机器构建新版本前端；服务器在 `/opt/tgpan` 执行 `git pull --ff-only`，在 `backend` 使用相同的 `UV_PYTHON_INSTALL_DIR` 执行 `uv sync --locked --no-dev --python 3.13`，替换对应前端产物，然后 `systemctl restart tgpan` 并检查本机及公网健康接口。备份 `/var/lib/tgpan` 时先停止服务，确保同时保留 `secret.key` 和在途上传文件。
 
+源码检出和前端目录须允许 `tgpan` 用户读取和遍历。Git 更新及前端展开使用 `umask 022`，代码目录和文件通常为 755/644；备份目录使用 700，配置、密钥和备份归档使用 600，不能把备份的 `umask 077` 全局沿用到 Git 检出。发布前可执行以下检查，确认服务用户可以导入新代码：
+
+```sh
+cd /opt/tgpan/backend
+runuser -u tgpan -- env PYTHONDONTWRITEBYTECODE=1 \
+  /opt/tgpan/backend/.venv/bin/python -c 'import app.main'
+```
+
 ## Docker Compose 部署 VPS
 
 1. 在根目录复制 `.env.example` 到 `.env`，填写实际 `TGPAN_PUBLIC_ORIGIN=https://你的域名`，保留 `TGPAN_SECURE_COOKIE=true`。
@@ -229,7 +237,7 @@ Bot API 最大下载 20MB，因此存储块默认 16MiB，配置上限也是 16M
 
 离线下载只需要 aria2，不需要 ffmpeg。管理员登录后在“设置 → 离线下载组件”检查安装状态；没有安装时点击“安装应用管理版本”，已有应用管理版本时点击“更新 aria2”。支持 glibc Linux x86_64/ARM64 及 macOS Intel/Apple Silicon。安装通过官方 micromamba 引导和 conda-forge 获取 aria2 及其运行库，不要求 apt、brew、编译工具或 root；需要部署机器能访问 `micro.mamba.pm`、其下载重定向目标及 conda-forge 软件包服务。安装缓存和环境会占用额外磁盘空间。
 
-原生 systemd 配置的 `StateDirectory=tgpan` 可写，组件和下载文件都放在 `/var/lib/tgpan`，不需要开放 `/usr` 或修改 `NoNewPrivileges`。更新前暂停离线任务；保持现有单 Uvicorn worker 设置。BT 的主动连接、DHT 和 tracker 需要服务器可访问公网；要改善入站 Peer 连通性，可按 aria2 默认端口策略配置服务器防火墙，应用不自动修改防火墙。
+原生 systemd 配置的 `StateDirectory=tgpan` 可写，组件和下载文件都放在 `/var/lib/tgpan`，不需要开放 `/usr` 或修改 `NoNewPrivileges`。服务用户的 home 应同样设为 `/var/lib/tgpan`（dedione 已如此配置），以便 micromamba 创建 `.conda/environments.txt` 环境登记文件；不要将它指向被 `ProtectHome` 隔离的 `/home` 或 `/root`。更新前暂停离线任务；保持现有单 Uvicorn worker 设置。BT 的主动连接、DHT 和 tracker 需要服务器可访问公网；要改善入站 Peer 连通性，可按 aria2 默认端口策略配置服务器防火墙，应用不自动修改防火墙。
 
 也可手动安装系统的 `aria2c`，macOS 例如 `brew install aria2`，并确保后端进程的 PATH 包含其安装目录。应用管理版本优先于系统版本；网页更新不会升级系统包。完整功能与磁盘策略见 [离线下载](features/offline.md)。
 
