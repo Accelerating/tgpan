@@ -67,6 +67,19 @@ class Worker:
         for path in (state.settings.data_dir / "uploads").iterdir():
             if path.name not in known:
                 path.unlink(missing_ok=True)
+        # A crash can occur after the last message mapping commits, before completion commits.
+        with state.db.connect() as conn:
+            conn.execute(
+                "UPDATE uploads SET state='complete',error=NULL,updated_at=? "
+                "WHERE state IN ('receiving','sending') AND received=size "
+                "AND NOT EXISTS (SELECT 1 FROM blocks WHERE upload_id=uploads.id AND state!='sent')",
+                (time.time(),),
+            )
+            conn.execute(
+                "UPDATE nodes SET status='ready',updated_at=? WHERE status='uploading' "
+                "AND id IN (SELECT node_id FROM uploads WHERE state='complete')",
+                (time.time(),),
+            )
 
     async def start(self):
         self.recover()
@@ -106,6 +119,8 @@ class Worker:
                 "SELECT b.*,u.config_id,u.owner_id,u.node_id FROM blocks b JOIN uploads u ON u.id=b.upload_id "
                 "JOIN users a ON a.id=u.owner_id WHERE b.state='queued' "
                 "AND u.state NOT IN ('error','cancelled','expired') AND a.disabled=0 "
+                "AND NOT EXISTS (SELECT 1 FROM offline_files f JOIN offline_tasks t ON t.id=f.task_id "
+                "WHERE f.upload_id=u.id AND t.state IN ('paused','error','cancelled')) "
                 "ORDER BY u.created_at,b.position LIMIT 1"
             )
             if block:
@@ -201,7 +216,8 @@ class Worker:
         state, now = self.state, time.time()
         async with state.mutation_lock:
             rows = state.db.all(
-                "SELECT * FROM uploads WHERE state IN ('receiving','error') AND updated_at<?",
+                "SELECT * FROM uploads WHERE state IN ('receiving','error') AND updated_at<? "
+                "AND origin='browser'",
                 (now - state.settings.upload_ttl,),
             )
             for row in rows:

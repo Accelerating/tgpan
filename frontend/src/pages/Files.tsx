@@ -29,7 +29,8 @@ import {
   selectedTree,
   type UploadTree,
 } from "../lib/folderUpload";
-import type { Listing, Node, Notify } from "../lib/types";
+import type { FolderItem, Listing, Node, Notify } from "../lib/types";
+import { folderPath } from "../lib/folders";
 import {
   Dialog,
   Empty,
@@ -41,27 +42,24 @@ import {
 import ShareDialog from "../components/ShareDialog";
 import FilePreview from "../components/FilePreview";
 import ActionMenu, { type MenuAction } from "../components/ActionMenu";
-type FolderItem = {
-  id: string;
-  name: string;
-  parent_id: string | null;
-};
 export default function Files({
   trash,
   version,
   refresh,
   notify,
   enqueue,
+  initialParent = null,
 }: {
   trash: boolean;
   version: number;
   refresh: () => void;
   notify: Notify;
   enqueue: (files: File[], parent: string | null) => void;
+  initialParent?: string | null;
 }) {
   const [share, setShare] = useState<Node | null>(null);
   const [preview, setPreview] = useState<Node | null>(null);
-  const [parent, setParent] = useState<string | null>(null);
+  const [parent, setParent] = useState<string | null>(initialParent);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("name");
   const [descending, setDescending] = useState(false);
@@ -215,18 +213,7 @@ export default function Files({
     });
     return actions;
   };
-  const pathName = (folder: FolderItem): string => {
-    const names = [folder.name];
-    let cursor = folder.parent_id;
-    let limit = folders.length;
-    while (cursor && limit-- > 0) {
-      const ancestor = folders.find((f) => f.id === cursor);
-      if (!ancestor) break;
-      names.unshift(ancestor.name);
-      cursor = ancestor.parent_id;
-    }
-    return "/" + names.join("/");
-  };
+  const pathName = (folder: FolderItem) => folderPath(folder, folders);
   const folderCount = items.filter((n) => n.kind === "folder").length;
   const total = items
     .filter((n) => n.kind === "file")

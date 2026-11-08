@@ -185,7 +185,7 @@ Docker 与本地启动脚本均禁用 Uvicorn 自动处理转发头，由应用�
 
 数据库不存文件内容，但存目录、配置、进度及消息映射。`secret.key` 丢失会导致 Token 无法解密。备份应加密并保管在服务器之外。
 
-最简单的一致备份方式是停止服务后备份整个数据卷，包括 `tgpan.db`、可能存在的 `tgpan.db-wal` / `tgpan.db-shm`、`secret.key` 和 `uploads/`。恢复时保持目录结构和容器 UID 10001 的读写权限。
+最简单的一致备份方式是停止服务后备份整个数据卷，包括 `tgpan.db`、可能存在的 `tgpan.db-wal` / `tgpan.db-shm`、`secret.key`、`uploads/` 和 `offline/`。恢复时保持目录结构和容器 UID 10001 的读写权限。
 
 如只需在线数据库快照，可以执行：
 
@@ -224,3 +224,13 @@ TGPAN_PROXY_URL=http://127.0.0.1:7897
 这是当前开发机器的地址，VPS 必须使用其自身可达的代理地址；能直连时留空。容器中的 `127.0.0.1` 指容器自身，不能直接指向宿主机代理，容器测试需填写容器可达的宿主机地址。支持 HTTP、HTTPS、SOCKS5 代理。应用不自动使用进程的 HTTP_PROXY/HTTPS_PROXY 环境变量。
 
 Bot API 最大下载 20MB，因此存储块默认 16MiB，配置上限也是 16MiB。旧版本如有设置 `TGPAN_BLOCK_SIZE=67108864`，需要改为 `16777216` 并先结束或取消旧上传。之前的模拟测试数据可删除后重建；旧 MTProto 文件记录没有 Bot API file_id，不能直接作为本版本下载记录使用。不要删除真实文件记录来尝试修复凭据问题。
+
+## 离线下载组件（Linux 原生 / macOS）
+
+离线下载只需要 aria2，不需要 ffmpeg。管理员登录后在“设置 → 离线下载组件”检查安装状态；没有安装时点击“安装应用管理版本”，已有应用管理版本时点击“更新 aria2”。支持 glibc Linux x86_64/ARM64 及 macOS Intel/Apple Silicon。安装通过官方 micromamba 引导和 conda-forge 获取 aria2 及其运行库，不要求 apt、brew、编译工具或 root；需要部署机器能访问 `micro.mamba.pm`、其下载重定向目标及 conda-forge 软件包服务。安装缓存和环境会占用额外磁盘空间。
+
+原生 systemd 配置的 `StateDirectory=tgpan` 可写，组件和下载文件都放在 `/var/lib/tgpan`，不需要开放 `/usr` 或修改 `NoNewPrivileges`。更新前暂停离线任务；保持现有单 Uvicorn worker 设置。BT 的主动连接、DHT 和 tracker 需要服务器可访问公网；要改善入站 Peer 连通性，可按 aria2 默认端口策略配置服务器防火墙，应用不自动修改防火墙。
+
+也可手动安装系统的 `aria2c`，macOS 例如 `brew install aria2`，并确保后端进程的 PATH 包含其安装目录。应用管理版本优先于系统版本；网页更新不会升级系统包。完整功能与磁盘策略见 [离线下载](features/offline.md)。
+
+默认单文件仍最大 5GB；离线容量默认 10GiB、磁盘保留默认 512MiB，后两项在网页设置中修改并保存到 SQLite。`TGPAN_TEMP_LIMIT` 仍仅限制公共上传块缓存，不承担完整离线文件容量。备份须包含 `offline/` 中的在途文件与控制文件。`components/` 中的独立环境包含绝对安装路径，换机器或改变数据目录路径后应重新安装组件；数据库、密钥、上传和离线数据仍按原备份流程恢复。

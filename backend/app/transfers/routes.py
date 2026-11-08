@@ -13,6 +13,7 @@ from app.common.security import new_id
 from app.files.delivery import file_response
 from app.files.service import add_node
 from app.storage.service import get_config
+from app.transfers.lifecycle import cancel_upload
 from app.transfers.receiving import check_offset, reserve_chunk
 from app.transfers.service import block_path, get_upload
 
@@ -34,7 +35,8 @@ def transfers(request: Request, user: User):
     uploads = state.db.all(
         "SELECT u.*,n.name,n.parent_id, "
         "coalesce((SELECT sum(size) FROM blocks WHERE upload_id=u.id AND state='sent'),0) AS stored "
-        "FROM uploads u JOIN nodes n ON n.id=u.node_id WHERE u.owner_id=? ORDER BY u.created_at DESC",
+        "FROM uploads u JOIN nodes n ON n.id=u.node_id WHERE u.owner_id=? AND u.origin='browser' "
+        "ORDER BY u.created_at DESC",
         (user["id"],),
     )
     for upload in uploads:
@@ -190,26 +192,7 @@ async def retry(upload_id: str, request: Request, user: User):
 async def cancel(upload_id: str, request: Request, user: User):
     state = request.app.state
     async with state.mutation_lock:
-        upload = get_upload(state, user["id"], upload_id)
-        if upload["state"] == "complete":
-            raise HTTPException(409, "已完成的文件请在文件列表中删除")
-        now = time.time()
-        with state.db.connect() as conn:
-            conn.execute("UPDATE uploads SET state='cancelled',updated_at=? WHERE id=?", (now, upload_id))
-            conn.execute(
-                "UPDATE nodes SET status='cancelled',deleted_at=?,trash_root=id WHERE id=?",
-                (now, upload["node_id"]),
-            )
-            for block in conn.execute("SELECT * FROM blocks WHERE upload_id=?", (upload_id,)).fetchall():
-                if block["message_id"]:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO cleanup VALUES (?,?,?,?,?,?,?)",
-                        (new_id(), user["id"], upload["config_id"], block["message_id"], "queued", None, now),
-                    )
-                if block["state"] != "sending":
-                    block_path(state, upload_id, block["position"]).unlink(missing_ok=True)
-                    conn.execute("DELETE FROM blocks WHERE id=?", (block["id"],))
-    state.worker.notify()
+        cancel_upload(state, user["id"], upload_id)
     return {"ok": True}
 
 

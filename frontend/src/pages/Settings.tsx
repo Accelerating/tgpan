@@ -16,16 +16,19 @@ import { api, errorText } from "../lib/api";
 import { useData } from "../lib/hooks";
 import type { Notify, StorageConfig } from "../lib/types";
 import { Dialog, Empty, ErrorBanner, Loading } from "../components/Shared";
+import Aria2 from "../components/settings/Aria2";
 export default function Settings({
   version,
   refresh,
   notify,
   onPasswordChanged,
+  admin,
 }: {
   version: number;
   refresh: () => void;
   notify: Notify;
   onPasswordChanged: () => void;
+  admin: boolean;
 }) {
   const { data, error } = useData<StorageConfig[]>("/storage", version);
   const [dialog, setDialog] = useState<"add" | "delete" | "rename" | null>(
@@ -125,6 +128,7 @@ export default function Settings({
         </div>
       </div>
       <ErrorBanner message={error} />
+      {admin && <Aria2 notify={notify} />}
       <section className="settings-panel">
         <div className="section-heading">
           <div className="section-heading-title">

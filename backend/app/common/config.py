@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     def prepare(self):
         self.data_dir = self.data_dir.resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        for name in ("uploads",):
+        for name in ("uploads", "offline", "components"):
             (self.data_dir / name).mkdir(exist_ok=True, mode=0o700)
         if self.chunk_size > self.block_size or self.block_size % self.chunk_size:
             raise ValueError("block_size 必须为 chunk_size 的整数倍")

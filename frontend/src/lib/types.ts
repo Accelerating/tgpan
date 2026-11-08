@@ -53,6 +53,56 @@ export interface System {
 }
 export type Notify = (message: string, error?: boolean) => void;
 
+export interface FolderItem {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
+export interface OfflineFile {
+  id: string;
+  position: number;
+  path: string;
+  size: number;
+  selected: number;
+  complete: number;
+  node_id: string | null;
+  stored: number;
+}
+export interface OfflineTask {
+  id: string;
+  name: string;
+  kind: string;
+  state: string;
+  phase: string;
+  parent_id: string | null;
+  total: number;
+  downloaded: number;
+  stored: number;
+  download_speed: number;
+  store_speed: number;
+  error: string | null;
+  updated_at: number;
+  files: OfflineFile[];
+}
+export interface OfflineSettings {
+  concurrency: number;
+  max_bytes: number;
+  reserve_bytes: number;
+  max_file_size: number;
+  available: boolean;
+  free_bytes: number;
+}
+export interface Aria2Info {
+  installed: boolean;
+  version: string | null;
+  path: string | null;
+  managed: boolean;
+  platform: string;
+  state: string;
+  error: string | null;
+  message: string;
+}
+
 export interface Share {
   id: string;
   node_id: string;

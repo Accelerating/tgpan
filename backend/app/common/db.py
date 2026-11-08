@@ -67,6 +67,36 @@ PRAGMA user_version=3;
 COMMIT;
 """
 
+OFFLINE_SCHEMA = """
+BEGIN;
+ALTER TABLE uploads ADD COLUMN origin TEXT NOT NULL DEFAULT 'browser';
+CREATE TABLE offline_settings (
+ id INTEGER PRIMARY KEY CHECK(id=1), concurrency INTEGER NOT NULL DEFAULT 1,
+ max_bytes INTEGER NOT NULL DEFAULT 10737418240, reserve_bytes INTEGER NOT NULL DEFAULT 536870912
+);
+INSERT INTO offline_settings(id) VALUES (1);
+CREATE TABLE offline_tasks (
+ id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id),
+ config_id TEXT NOT NULL REFERENCES configs(id), parent_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+ name TEXT NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL,
+ state TEXT NOT NULL DEFAULT 'queued', phase TEXT NOT NULL DEFAULT 'resolve',
+ downloaded INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
+ download_complete INTEGER NOT NULL DEFAULT 0, error TEXT,
+ created_at REAL NOT NULL, updated_at REAL NOT NULL
+);
+CREATE INDEX offline_owner ON offline_tasks(owner_id,created_at);
+CREATE TABLE offline_files (
+ id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES offline_tasks(id) ON DELETE CASCADE,
+ position INTEGER NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL,
+ selected INTEGER NOT NULL DEFAULT 1, complete INTEGER NOT NULL DEFAULT 0,
+ upload_id TEXT REFERENCES uploads(id) ON DELETE SET NULL,
+ UNIQUE(task_id,position), UNIQUE(task_id,path)
+);
+CREATE INDEX offline_upload ON offline_files(upload_id);
+PRAGMA user_version=4;
+COMMIT;
+"""
+
 
 class Database:
     def __init__(self, path: Path):
@@ -99,7 +129,10 @@ class Database:
                 version = 2
             if version == 2:
                 conn.executescript(SHARES_SCHEMA)
-            elif version != 3:
+                version = 3
+            if version == 3:
+                conn.executescript(OFFLINE_SCHEMA)
+            elif version != 4:
                 raise RuntimeError(f"不支持的数据库版本：{version}")
             conn.execute("CREATE INDEX IF NOT EXISTS login_attempt_key_time ON login_attempts(address,time)")
             conn.execute("CREATE INDEX IF NOT EXISTS login_attempt_time ON login_attempts(time)")

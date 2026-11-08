@@ -164,7 +164,7 @@ def test_download_rejects_incomplete_or_wrong_ranges(adapter):
 
 
 def test_storage_block_limit_and_database_migration(tmp_path):
-    from app.common.db import Database, SCHEMA
+    from app.common.db import SCHEMA, Database
 
     settings = Settings(proxy_url="", data_dir=tmp_path)
     assert settings.block_size == 16 * 1024**2
@@ -176,5 +176,5 @@ def test_storage_block_limit_and_database_migration(tmp_path):
     db.migrate()
     db.migrate()
     with db.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
         assert "file_id" in {row["name"] for row in conn.execute("PRAGMA table_info(blocks)")}

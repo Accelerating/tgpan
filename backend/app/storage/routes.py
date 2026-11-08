@@ -77,6 +77,7 @@ async def remove(config_id: str, request: Request, user: User):
             or config_id in state.testing_configs
             or state.db.one("SELECT id FROM uploads WHERE config_id=?", (config_id,))
             or state.db.one("SELECT id FROM cleanup WHERE config_id=?", (config_id,))
+            or state.db.one("SELECT id FROM offline_tasks WHERE config_id=?", (config_id,))
         ):
             raise HTTPException(409, "配置仍被文件或清理任务引用，不能删除")
         state.db.execute("DELETE FROM configs WHERE id=?", (config_id,))

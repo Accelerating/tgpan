@@ -13,6 +13,7 @@ import {
   Settings as SettingsIcon,
   Trash2,
   UploadCloud,
+  Download,
   UsersRound,
   X,
   AlertCircle,
@@ -27,11 +28,20 @@ import Transfers from "./pages/Transfers";
 import Users from "./pages/Users";
 import PublicShare from "./pages/PublicShare";
 import Shares from "./pages/Shares";
+import Offline from "./pages/Offline";
 import { Dialog } from "./components/Shared";
-type Page = "files" | "transfers" | "trash" | "shares" | "settings" | "users";
+type Page =
+  | "files"
+  | "transfers"
+  | "offline"
+  | "trash"
+  | "shares"
+  | "settings"
+  | "users";
 const pages = {
   files: t("我的文件"),
   transfers: t("传输任务"),
+  offline: t("离线下载"),
   trash: t("回收站"),
   shares: t("我的分享"),
   settings: t("设置"),
@@ -193,9 +203,11 @@ function Drive({
 }) {
   const { data: system, error: systemError } = useData<System>("/system");
   const uploader = useUploader(system, refresh);
+  const [folderTarget, setFolderTarget] = useState<string | null>(null);
   const nav = [
     { id: "files", label: t("我的文件"), icon: FolderClosed },
     { id: "transfers", label: t("传输任务"), icon: UploadCloud },
+    { id: "offline", label: t("离线下载"), icon: Download },
     { id: "trash", label: t("回收站"), icon: Trash2 },
     { id: "shares", label: t("我的分享"), icon: Link2 },
     { id: "settings", label: t("设置"), icon: SettingsIcon },
@@ -243,7 +255,10 @@ function Drive({
             <button
               key={item.id}
               className={`nav-item ${page === item.id ? "active" : ""}`}
-              onClick={() => navigate(item.id as Page)}
+              onClick={() => {
+                if (item.id === "files") setFolderTarget(null);
+                navigate(item.id as Page);
+              }}
             >
               <item.icon size={19} />
               <span>{item.label}</span>
@@ -286,7 +301,8 @@ function Drive({
         <main className="main-content">
           {page === "files" || page === "trash" ? (
             <Files
-              key={page}
+              key={`${page}:${folderTarget || "root"}`}
+              initialParent={folderTarget}
               trash={page === "trash"}
               version={version}
               refresh={refresh}
@@ -301,6 +317,16 @@ function Drive({
               {...uploader}
               enqueue={enqueue}
             />
+          ) : page === "offline" ? (
+            <Offline
+              version={version}
+              refresh={refresh}
+              notify={notify}
+              onOpenFolder={(parent) => {
+                setFolderTarget(parent);
+                navigate("files");
+              }}
+            />
           ) : page === "shares" ? (
             <Shares version={version} refresh={refresh} notify={notify} />
           ) : page === "settings" ? (
@@ -309,6 +335,7 @@ function Drive({
               refresh={refresh}
               notify={notify}
               onPasswordChanged={logout}
+              admin={!!user.admin}
             />
           ) : (
             <Users version={version} refresh={refresh} notify={notify} />

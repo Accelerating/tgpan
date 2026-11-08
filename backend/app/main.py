@@ -16,7 +16,11 @@ from app.common.db import Database
 from app.common.i18n import detect_locale, translate
 from app.common.limits import CapacityLimiter
 from app.common.security import Secrets, digest
+from app.components.routes import router as components
+from app.components.service import Components
 from app.files.routes import router as files
+from app.offline.routes import router as offline
+from app.offline.service import OfflineWorker
 from app.shares.routes import router as shares
 from app.storage.routes import router as storage_routes
 from app.storage.telegram import TelegramStorage
@@ -54,10 +58,15 @@ def create_app(settings: Settings | None = None, storage=None):
         state.share_password_slots = CapacityLimiter(2)
         state.active_downloads = Counter()
         state.worker = Worker(state)
+        state.components = Components(state)
+        state.offline = OfflineWorker(state)
         await state.worker.start()
+        await state.offline.start()
         try:
             yield
         finally:
+            await state.offline.stop()
+            await state.components.stop()
             await state.worker.stop()
             lock_file.close()
 
@@ -136,7 +145,7 @@ def create_app(settings: Settings | None = None, storage=None):
     async def disk_error(request, error):
         return JSONResponse({"detail": translate("文件读写失败，请检查磁盘空间和目录权限", request)}, status_code=503)
 
-    for router in (accounts, files, storage_routes, transfers, shares):
+    for router in (accounts, files, storage_routes, transfers, shares, components, offline):
         app.include_router(router)
 
     @app.get("/api/health")

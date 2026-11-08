@@ -1841,3 +1841,118 @@ nav {
   width: 100%;
   margin-inline: auto;
 }
+.offline-actions,
+.offline-summary,
+.offline-selection-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.offline-summary {
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+.offline-page .page-heading {
+  flex-wrap: wrap;
+}
+.offline-page .page-heading h1 {
+  flex-shrink: 0;
+}
+.offline-task {
+  padding: 20px;
+  border-bottom: 1px solid var(--border, #e8edf3);
+}
+.offline-task:last-child {
+  border-bottom: 0;
+}
+.offline-task .transfer-title {
+  margin-bottom: 16px;
+}
+.offline-task .transfer-title strong {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.offline-actions {
+  margin-top: 12px;
+  gap: 6px;
+}
+.offline-meta {
+  margin-top: 12px;
+}
+.offline-details {
+  margin-top: 14px;
+  font-size: 12px;
+}
+.offline-details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.offline-file-selection {
+  max-height: 45vh;
+  overflow: auto;
+}
+.offline-file-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0;
+}
+.offline-file-choice > label {
+  min-width: 0;
+  flex: 1;
+}
+.offline-file-path,
+.component-path {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.offline-error-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.aria2-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+}
+.aria2-card p {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.aria2-install-progress {
+  margin: 14px 0;
+  font-size: 12px;
+}
+.offline-settings-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.offline-settings-form > button {
+  justify-self: start;
+}
+@media (max-width: 640px) {
+  .offline-settings-form {
+    grid-template-columns: 1fr;
+  }
+  .aria2-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+.aria2-body {
+  padding: 20px;
+  font-size: 12px;
+}
+.offline-meta {
+  flex-wrap: wrap;
+}
