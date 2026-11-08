@@ -130,7 +130,7 @@ export const en = {
   移动到: "Move to",
   移入回收站: "Move to trash",
   恢复项目: "Restore items",
-  "登录 TG Pan": "Sign in to TG Pan",
+  "登录 Pan": "Sign in to Pan",
   用户名: "Username",
   输入用户名: "Enter your username",
   密码: "Password",

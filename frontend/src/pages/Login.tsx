@@ -36,7 +36,7 @@ export default function Login({ onLogin }: { onLogin: (user: User) => void }) {
           <span className="welcome-icon">
             <Cloud size={27} />
           </span>
-          <h2>{t("登录 TG Pan")}</h2>
+          <h2>{t("登录 Pan")}</h2>
           <Input
             label={t("用户名")}
             labelPlacement="outside"
