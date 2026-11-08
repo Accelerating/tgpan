@@ -333,6 +333,37 @@ def test_signed_get_url_can_reject_head(monkeypatch):
     assert asyncio.run(inspect_http(source)) == (source, None, False)
 
 
+@pytest.mark.parametrize("already_closing", [False, True])
+def test_proxy_handles_disconnect_while_rejecting_incomplete_request(already_closing):
+    from app.offline.proxy import DownloadProxy
+
+    class DisconnectedWriter:
+        closed = False
+
+        def is_closing(self):
+            return already_closing
+
+        def write(self, data):
+            raise RuntimeError("uvloop transport is closed")
+
+        async def drain(self):
+            raise ConnectionResetError("Connection lost")
+
+        def close(self):
+            self.closed = True
+
+    async def run():
+        async with DownloadProxy() as proxy:
+            reader = asyncio.StreamReader()
+            reader.feed_eof()
+            writer = DisconnectedWriter()
+            await proxy.accept(reader, writer)
+            assert writer.closed
+            assert not proxy.connections
+
+    asyncio.run(run())
+
+
 def test_failed_component_update_preserves_previous_version(setup, monkeypatch):
     _, app, _ = setup
     manager = app.state.components

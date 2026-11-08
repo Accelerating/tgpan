@@ -56,6 +56,8 @@ class DownloadProxy:
                 upstream, remote = await asyncio.open_connection(
                     address[4][0], address[4][1], family=address[0]
                 )
+                if writer.is_closing() or remote.is_closing():
+                    return
                 if method == "CONNECT":
                     writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                     await writer.drain()
@@ -78,9 +80,11 @@ class DownloadProxy:
                     async with asyncio.timeout(120):
                         chunk = await source.read(65536)
                     if not chunk:
-                        if destination.can_write_eof():
-                            with suppress(OSError):
+                        if not destination.is_closing() and destination.can_write_eof():
+                            with suppress(OSError, RuntimeError):
                                 destination.write_eof()
+                        return
+                    if destination.is_closing():
                         return
                     destination.write(chunk)
                     await destination.drain()
@@ -96,9 +100,12 @@ class DownloadProxy:
                     stream.cancel()
                 await asyncio.gather(*streams, return_exceptions=True)
         except (OSError, ValueError, TimeoutError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
-            with suppress(OSError):
-                writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-                await writer.drain()
+            # Once forwarding starts, a disconnected client needs only cleanup,
+            # not a second HTTP response on its possibly closed transport.
+            if remote is None and not writer.is_closing():
+                with suppress(OSError, RuntimeError):
+                    writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    await writer.drain()
         finally:
             if remote:
                 remote.close()
