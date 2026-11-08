@@ -54,6 +54,71 @@ TGPAN_HOST=127.0.0.1 TGPAN_PORT=8001 ./scripts/restart.sh
 
 TGPAN_PORT 同时用于寻找需要停止的旧进程；更改端口前，应先停止旧端口的服务。此脚本用于本地直接运行，Docker 部署使用 Docker Compose 管理。
 
+## systemd + Caddy 原生部署
+
+原生部署适合没有 Docker、内存约 1GB 的 VPS。前端在开发机器构建，服务器仅运行 Python 后端；仓库内提供 `deploy/tgpan.service` 和 `deploy/Caddyfile.example`。不要将本地 `.env`、数据库、Bot Token 或密钥复制到服务器。
+
+目录约定：
+
+| 路径 | 用途 |
+| --- | --- |
+| `/opt/tgpan` | 从 GitHub 克隆的代码及后端虚拟环境 |
+| `/opt/tgpan/backend/static` | 与代码版本对应的前端生产构建 |
+| `/opt/tgpan-python` | uv 管理的 Python 3.13，服务用户需要读取和执行权限 |
+| `/etc/tgpan/tgpan.env` | root 所有、权限 600 的服务环境配置 |
+| `/var/lib/tgpan` | `tgpan` 服务用户所有、权限 700 的数据库、密钥及上传临时文件 |
+
+服务器安装 Git 和 uv，创建无登录权限的 `tgpan` 系统用户，然后准备代码和运行时：
+
+```sh
+git clone --branch main https://github.com/Accelerating/tgpan.git /opt/tgpan
+UV_PYTHON_INSTALL_DIR=/opt/tgpan-python uv python install 3.13
+cd /opt/tgpan/backend
+UV_PYTHON_INSTALL_DIR=/opt/tgpan-python uv sync --locked --no-dev --python 3.13
+```
+
+在本地 `frontend` 执行 `pnpm install --frozen-lockfile && pnpm build`，将 `dist/` 内容复制到服务器的 `/opt/tgpan/backend/static/`。前端产物必须与服务器使用同一源码版本，更新时先构建完整的新目录，再替换旧目录。
+
+创建 `/etc/tgpan/tgpan.env`，其余参数使用代码默认值：
+
+```dotenv
+TGPAN_DATA_DIR=/var/lib/tgpan
+TGPAN_STATIC_DIR=/opt/tgpan/backend/static
+TGPAN_PUBLIC_ORIGIN=https://pan.zhcn.win
+TGPAN_SECURE_COOKIE=true
+TGPAN_TRUSTED_PROXIES=127.0.0.1/32,::1/128
+TGPAN_ENABLE_API_DOCS=false
+TGPAN_PROXY_URL=
+```
+
+在 `/opt/tgpan/backend` 中以服务用户初始化管理员：
+
+```sh
+runuser -u tgpan -- env TGPAN_DATA_DIR=/var/lib/tgpan \
+  /opt/tgpan/backend/.venv/bin/python -m app.cli create-admin --username admin
+install -m 0644 /opt/tgpan/deploy/tgpan.service /etc/systemd/system/tgpan.service
+systemctl daemon-reload
+systemctl enable --now tgpan
+curl -fsS http://127.0.0.1:8000/api/health
+```
+
+服务仅监听 `127.0.0.1:8000`，单 worker，内存上限 512MB，开机启动，异常退出自动重启；数据目录在代码目录外，更新代码不会覆盖数据。日志使用 `journalctl -u tgpan` 查看。原生部署不要使用 `scripts/restart.sh`，该脚本面向本地开发，会在服务器构建前端；更新服务使用 `systemctl restart tgpan`。
+
+将 `deploy/Caddyfile.example` 的站点块加入现有 Caddyfile。`header_up X-Forwarded-For {remote_host}` 使用直连客户端地址覆盖用户提交的转发头，与后端仅信任回环代理的设置配套。Caddy 自动管理证书及 HTTP 到 HTTPS 跳转；80/443 端口需可访问。先备份原配置并使用正在运行的同一个 Caddy 二进制校验，再平滑重载，保留原有站点和全局配置。
+
+dedione 的部署约定是 `/opt/tgpan`，域名为 `pan.zhcn.win`；现有 Caddy 二进制为 `/root/naive/caddy`，配置为 `/root/naive/Caddyfile`，由 `caddy.service` 管理：
+
+```sh
+/root/naive/caddy validate --config /root/naive/Caddyfile --adapter caddyfile
+systemctl reload caddy
+systemctl status tgpan --no-pager
+curl -fsS https://pan.zhcn.win/api/health
+```
+
+首次自动部署时，管理员为 `admin`，随机初始密码仅保存在服务器 `/etc/tgpan/admin-initial-password`，root 所有、权限 600。管理员可通过 `ssh dedione 'cat /etc/tgpan/admin-initial-password'` 读取，登录后在设置中修改密码，随后删除此文件；密码不会写入仓库。Telegram 存储配置由管理员在网页中添加。
+
+更新步骤：先按下文备份数据，在开发机器构建新版本前端；服务器在 `/opt/tgpan` 执行 `git pull --ff-only`，在 `backend` 使用相同的 `UV_PYTHON_INSTALL_DIR` 执行 `uv sync --locked --no-dev --python 3.13`，替换对应前端产物，然后 `systemctl restart tgpan` 并检查本机及公网健康接口。备份 `/var/lib/tgpan` 时先停止服务，确保同时保留 `secret.key` 和在途上传文件。
+
 ## Docker Compose 部署 VPS
 
 1. 在根目录复制 `.env.example` 到 `.env`，填写实际 `TGPAN_PUBLIC_ORIGIN=https://你的域名`，保留 `TGPAN_SECURE_COOKIE=true`。

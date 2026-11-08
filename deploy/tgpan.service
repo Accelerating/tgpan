@@ -1,0 +1,28 @@
+[Unit]
+Description=TG Pan private drive
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=tgpan
+Group=tgpan
+WorkingDirectory=/opt/tgpan/backend
+EnvironmentFile=/etc/tgpan/tgpan.env
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/tgpan/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers --timeout-graceful-shutdown 20
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+StateDirectory=tgpan
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

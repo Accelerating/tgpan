@@ -8,6 +8,7 @@
 *.pfx
 .aws/
 .codex/
+admin-initial-password
 
 # Python dependencies, caches and test reports.
 .venv/
