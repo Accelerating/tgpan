@@ -1,4 +1,8 @@
 MESSAGES = {
+    "目录中没有已完成的文件，不能分享": "This folder has no completed files and cannot be shared.",
+    "一次最多上传 5000 个目录": "Upload up to 5,000 folders at a time.",
+    "目录路径过长或层级过深": "The folder path is too long or too deeply nested.",
+    "只能分享目录或上传完成的文件": "Only folders and completed files can be shared.",
     "Bot Token 无效或已被撤销，请检查机器人配置": "The Bot Token is invalid or revoked. Check the bot configuration.",
     "Telegram 拒绝删除消息：可能已超过 48 小时或缺少删除权限，可在频道内手动清理": "Telegram could not delete the message. It may be older than 48 hours or the bot may lack permission. Delete it manually in the channel.",
     "Telegram 操作失败（{p0}），请检查凭据、频道权限和网络后重试": "Telegram operation failed ({p0}). Check credentials, channel permissions and your connection, then retry.",

@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.common.security import digest
 from app.files.media import preview_kind
+from app.files.service import get_node, has_ready_files
 
 COOKIE = "tgpan_share"
 
@@ -21,9 +22,10 @@ def live_share(state, token):
         or share["deleted_at"] is not None
         or share["disabled"]
         or share["status"] != "ready"
-        or share["kind"] != "file"
         or (share["expires_at"] is not None and share["expires_at"] <= time.time())
     ):
+        raise HTTPException(404, "分享不存在或已失效")
+    if share["kind"] == "folder" and not has_ready_files(state.db, share["owner_id"], share["node_id"]):
         raise HTTPException(404, "分享不存在或已失效")
     return share
 
@@ -54,9 +56,50 @@ def public_info(share):
         "requires_password": False,
         "name": share["name"],
         "size": share["size"],
-        "preview_kind": preview_kind(share["name"]),
+        "kind": share["kind"],
+        "preview_kind": preview_kind(share["name"]) if share["kind"] == "file" else None,
         "expires_at": share["expires_at"],
     }
+
+
+def shared_node(state, share, node_id):
+    """Authorize membership from the current ancestor chain, including during streaming."""
+    node = get_node(state.db, share["owner_id"], node_id)
+    cursor = node
+    while cursor["id"] != share["node_id"]:
+        if share["kind"] != "folder" or not cursor["parent_id"]:
+            raise HTTPException(404, "文件或目录不存在")
+        cursor = get_node(state.db, share["owner_id"], cursor["parent_id"])
+    if node["status"] != "ready" or (
+        node["kind"] == "folder" and not has_ready_files(state.db, share["owner_id"], node_id)
+    ):
+        raise HTTPException(404, "文件或目录不存在")
+    return node
+
+
+def folder_listing(state, share, parent_id):
+    parent = shared_node(state, share, parent_id or share["node_id"])
+    if parent["kind"] != "folder":
+        raise HTTPException(400, "目标必须是目录")
+    rows = state.db.all(
+        "SELECT id,name,kind,size,updated_at FROM nodes WHERE owner_id=? AND parent_id=? "
+        "AND deleted_at IS NULL AND status='ready' ORDER BY kind DESC,name COLLATE NOCASE",
+        (share["owner_id"], parent["id"]),
+    )
+    rows = [
+        row
+        for row in rows
+        if row["kind"] == "file" or has_ready_files(state.db, share["owner_id"], row["id"])
+    ]
+    for row in rows:
+        row["preview_kind"] = preview_kind(row["name"]) if row["kind"] == "file" else None
+    crumbs = []
+    while True:
+        crumbs.insert(0, {"id": parent["id"], "name": parent["name"]})
+        if parent["id"] == share["node_id"]:
+            break
+        parent = get_node(state.db, share["owner_id"], parent["parent_id"])
+    return {"items": rows, "breadcrumbs": crumbs}
 
 
 def owner_info(state, share):

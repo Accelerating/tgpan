@@ -3,10 +3,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from test_drive import upload_file, wait_for
 
 from app.common.security import digest
 from app.shares.service import COOKIE
-from test_drive import upload_file, wait_for
 
 
 def ready(client, name="shared.mp4", parent=None):
@@ -178,8 +178,8 @@ def test_password_attempts_are_rate_limited(setup):
 
 def test_invalid_share_targets_and_expiry(setup):
     client, app, storage = setup
-    folder = client.post("/api/files/folders", json={"name": "folder"}).json()
-    assert client.post("/api/shares", json={"node_id": folder["id"]}).status_code == 409
+    pending = client.post("/api/uploads", json={"name": "pending", "size": 1, "fingerprint": "a" * 64}).json()
+    assert client.post("/api/shares", json={"node_id": pending["node_id"]}).status_code == 409
     task, _ = ready(client)
     assert (
         client.post(
@@ -200,7 +200,9 @@ def test_invalid_share_targets_and_expiry(setup):
 
 def test_expiration_stops_an_already_open_shared_stream(setup):
     import asyncio
+
     from fastapi import HTTPException, Request
+
     from app.shares.routes import shared_file
 
     client, app, storage = setup

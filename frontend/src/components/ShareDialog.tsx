@@ -82,9 +82,18 @@ export default function ShareDialog({
     >
       <ModalContent>
         <form onSubmit={create}>
-          <ModalHeader>{t("分享文件")}</ModalHeader>
+          <ModalHeader>
+            {node.kind === "folder" ? t("分享目录") : t("分享文件")}
+          </ModalHeader>
           <ModalBody>
             <div className="share-file-name">{node.name}</div>
+            {node.kind === "folder" && (
+              <p className="muted">
+                {t(
+                  "分享内容随目录实时更新，访问者可浏览和下载其中已完成的文件。",
+                )}
+              </p>
+            )}
             {!share ? (
               <>
                 <Input

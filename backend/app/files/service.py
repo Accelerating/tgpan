@@ -35,6 +35,19 @@ def descendants(db, node_id):
     )
 
 
+def has_ready_files(db, owner, node_id):
+    return bool(
+        db.one(
+            "WITH RECURSIVE tree AS ("
+            "SELECT id,kind,status FROM nodes WHERE id=? AND owner_id=? AND deleted_at IS NULL UNION ALL "
+            "SELECT n.id,n.kind,n.status FROM nodes n JOIN tree t ON n.parent_id=t.id "
+            "WHERE n.owner_id=? AND n.deleted_at IS NULL) "
+            "SELECT 1 FROM tree WHERE kind='file' AND status='ready' LIMIT 1",
+            (node_id, owner, owner),
+        )
+    )
+
+
 def add_node(db, owner, parent, name, kind, size=0, status="ready", keep_both=False):
     check_parent(db, owner, parent)
     name = clean_name(name)

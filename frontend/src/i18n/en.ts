@@ -226,4 +226,15 @@ export const en = {
   启用帐号: "Enable account",
   禁用帐号: "Disable account",
   "Pan 文件存储与分享。": "Pan file storage and sharing.",
+  上传文件夹: "Upload folder",
+  空目录不能上传: "Empty folders cannot be uploaded.",
+  选择上传文件夹: "Choose a folder to upload",
+  分享目录: "Share folder",
+  "分享内容随目录实时更新，访问者可浏览和下载其中已完成的文件。":
+    "Shared contents update with the folder. Visitors can browse and download completed files inside it.",
+  "一次最多上传 5000 个目录": "Upload up to 5,000 folders at a time.",
+  目录为空: "This folder is empty",
+  "预览 {p0}": "Preview {p0}",
+  "下载 {p0}": "Download {p0}",
+  关闭预览: "Close preview",
 } as const;

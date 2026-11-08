@@ -7,6 +7,7 @@ import type { PublicShareInfo } from "../lib/types";
 import { ErrorBanner, Loading, FileIcon } from "../components/Shared";
 import MediaViewer from "../components/MediaViewer";
 import CloudBackdrop from "../components/CloudBackdrop";
+import SharedFolder from "../components/shares/SharedFolder";
 export default function PublicShare({ token }: { token: string }) {
   const path = `/public/shares/${encodeURIComponent(token)}`;
   const [info, setInfo] = useState<PublicShareInfo>();
@@ -14,9 +15,11 @@ export default function PublicShare({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [fatal, setFatal] = useState("");
   const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
   const load = async () => {
     try {
       setInfo(await api<PublicShareInfo>(path));
+      setVersion((value) => value + 1);
       setFatal("");
     } catch (e) {
       setFatal(errorText(e));
@@ -98,10 +101,21 @@ export default function PublicShare({ token }: { token: string }) {
         ) : (
           <>
             <div className="public-share-file">
-              <FileIcon node={{ name: info.name!, kind: "file" }} />
+              <FileIcon
+                node={{ name: info.name!, kind: info.kind || "file" }}
+              />
               <span>{info.name}</span>
-              <span className="muted">{formatSize(info.size!)}</span>
+              <span className="muted">
+                {info.kind === "folder" ? t("目录") : formatSize(info.size!)}
+              </span>
             </div>
+            {info.kind === "folder" && (
+              <SharedFolder
+                key={`${path}-${version}`}
+                path={path}
+                onAccessError={() => void load()}
+              />
+            )}
             {info.preview_kind && (
               <MediaViewer
                 key={`${token}-${info.requires_password}`}
@@ -117,15 +131,17 @@ export default function PublicShare({ token }: { token: string }) {
                   ? t("有效期至 {p0}", { p0: dateTime(info.expires_at) })
                   : t("永久有效")}
               </span>
-              <Button
-                as="a"
-                href={`/api${path}/download`}
-                download={info.name}
-                color="primary"
-                startContent={<ArrowDownToLine size={16} />}
-              >
-                {t("下载文件")}
-              </Button>
+              {info.kind !== "folder" && (
+                <Button
+                  as="a"
+                  href={`/api${path}/download`}
+                  download={info.name}
+                  color="primary"
+                  startContent={<ArrowDownToLine size={16} />}
+                >
+                  {t("下载文件")}
+                </Button>
+              )}
             </div>
           </>
         )}

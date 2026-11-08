@@ -23,6 +23,12 @@ import {
 import { api, date, errorText, formatSize } from "../lib/api";
 import { isFileDrag, useItemDrag } from "../lib/dragAndDrop";
 import { useData } from "../lib/hooks";
+import {
+  droppedTree,
+  enqueueTree,
+  selectedTree,
+  type UploadTree,
+} from "../lib/folderUpload";
 import type { Listing, Node, Notify } from "../lib/types";
 import {
   Dialog,
@@ -70,6 +76,22 @@ export default function Files({
   const [moveError, setMoveError] = useState("");
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const input = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const [preparing, setPreparing] = useState(false);
+  const uploadTree = async (
+    tree: Promise<UploadTree> | UploadTree,
+    destination: string | null,
+  ) => {
+    setPreparing(true);
+    try {
+      await enqueueTree(await tree, destination, enqueue);
+    } catch (error) {
+      notify(errorText(error), true);
+    } finally {
+      setPreparing(false);
+      refresh();
+    }
+  };
   const { data, error } = useData<Listing>(
     `/files?trash=${trash}${parent ? `&parent_id=${parent}` : ""}&q=${encodeURIComponent(search)}&sort=${sort}&descending=${descending}`,
     version,
@@ -163,7 +185,7 @@ export default function Files({
         },
       ];
     const actions: MenuAction[] = [];
-    if (node.kind === "file" && node.status === "ready")
+    if (node.status === "ready")
       actions.push({
         key: "share",
         label: t("分享"),
@@ -225,8 +247,8 @@ export default function Files({
       onDrop={(e) => {
         e.preventDefault();
         setDragging(false);
-        if (!trash && isFileDrag(e.dataTransfer))
-          enqueue(Array.from(e.dataTransfer.files), parent);
+        if (!trash && !preparing && isFileDrag(e.dataTransfer))
+          void uploadTree(droppedTree(e.dataTransfer), parent);
       }}
     >
       <div className="page-heading">
@@ -264,6 +286,14 @@ export default function Files({
                 onPress={() => input.current?.click()}
               >
                 {t("上传文件")}
+              </Button>
+              <Button
+                variant="bordered"
+                startContent={<FolderPlus size={17} />}
+                isLoading={preparing}
+                onPress={() => folderInput.current?.click()}
+              >
+                {t("上传文件夹")}
               </Button>
             </>
           )}
@@ -566,6 +596,21 @@ export default function Files({
           </div>
         )}
       </section>
+      <input
+        ref={folderInput}
+        type="file"
+        multiple
+        {...{ webkitdirectory: "" }}
+        className="sr-only"
+        aria-label={t("选择上传文件夹")}
+        onChange={(e) => {
+          void uploadTree(
+            selectedTree(Array.from(e.target.files || [])),
+            parent,
+          );
+          e.target.value = "";
+        }}
+      />
       <input
         ref={input}
         type="file"

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.common.dependencies import User
+from app.files.folders import resolve_folders
 from app.files.media import preview_kind
 from app.files.service import (
     add_node,
@@ -27,6 +28,11 @@ class Folder(BaseModel):
 class NodeEdit(BaseModel):
     name: str | None = None
     parent_id: str | None = None
+
+
+class FolderPaths(BaseModel):
+    parent_id: str | None = None
+    paths: list[str] = Field(min_length=1, max_length=5000)
 
 
 class Selection(BaseModel):
@@ -84,6 +90,14 @@ def folders(request: Request, user: User):
 @router.post("/folders", status_code=201)
 async def create_folder(body: Folder, request: Request, user: User):
     return add_node(request.app.state.db, user["id"], body.parent_id, body.name, "folder")
+
+
+@router.post("/folders/resolve")
+async def upload_folders(body: FolderPaths, request: Request, user: User):
+    if any(len(path) > 4096 or path.count("/") >= 100 for path in body.paths):
+        raise HTTPException(422, "目录路径过长或层级过深")
+    async with request.app.state.mutation_lock:
+        return resolve_folders(request.app.state.db, user["id"], body.parent_id, body.paths)
 
 
 @router.patch("/{node_id}")

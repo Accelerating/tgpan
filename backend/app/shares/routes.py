@@ -12,8 +12,17 @@ from app.common.i18n import translate
 from app.common.limits import client_address
 from app.common.security import digest, new_id, passwords
 from app.files.delivery import file_response
-from app.files.service import get_node
-from app.shares.service import COOKIE, authorize_share, has_access, live_share, owner_info, public_info
+from app.files.service import get_node, has_ready_files
+from app.shares.service import (
+    COOKIE,
+    authorize_share,
+    folder_listing,
+    has_access,
+    live_share,
+    owner_info,
+    public_info,
+    shared_node,
+)
 
 router = APIRouter(prefix="/api", tags=["shares"])
 
@@ -55,8 +64,10 @@ async def create(body: ShareCreate, request: Request, user: User):
     async with state.mutation_lock:
         current_user(request)
         node = get_node(state.db, user["id"], body.node_id)
-        if node["kind"] != "file" or node["status"] != "ready":
-            raise HTTPException(409, "只能分享上传完成的文件")
+        if node["status"] != "ready":
+            raise HTTPException(409, "只能分享目录或上传完成的文件")
+        if node["kind"] == "folder" and not has_ready_files(state.db, user["id"], node["id"]):
+            raise HTTPException(409, "目录中没有已完成的文件，不能分享")
         token = secrets.token_urlsafe(32)
         identity = new_id()
         state.db.execute(
@@ -144,15 +155,23 @@ async def unlock(token: str, body: Unlock, request: Request, response: Response)
     return public_info(share)
 
 
-async def shared_file(token, request, inline=False):
+@router.get("/public/shares/{token}/files")
+def shared_listing(token: str, request: Request, parent_id: str | None = None):
+    state = request.app.state
+    return folder_listing(state, authorize_share(state, token, request), parent_id)
+
+
+async def shared_file(token, request, inline=False, node_id=None):
     state = request.app.state
 
     def check():
-        return authorize_share(state, token, request)
+        share = authorize_share(state, token, request)
+        shared_node(state, share, node_id or share["node_id"])
+        return share
 
     share = check()
     return await file_response(
-        share["node_id"], request, {"id": share["owner_id"]}, inline=inline, authorize=check
+        node_id or share["node_id"], request, {"id": share["owner_id"]}, inline=inline, authorize=check
     )
 
 
@@ -166,3 +185,15 @@ async def download(token: str, request: Request):
 @router.head("/public/shares/{token}/preview", include_in_schema=False)
 async def preview(token: str, request: Request):
     return await shared_file(token, request, inline=True)
+
+
+@router.get("/public/shares/{token}/files/{node_id}/download")
+@router.head("/public/shares/{token}/files/{node_id}/download", include_in_schema=False)
+async def child_download(token: str, node_id: str, request: Request):
+    return await shared_file(token, request, node_id=node_id)
+
+
+@router.get("/public/shares/{token}/files/{node_id}/preview")
+@router.head("/public/shares/{token}/files/{node_id}/preview", include_in_schema=False)
+async def child_preview(token: str, node_id: str, request: Request):
+    return await shared_file(token, request, inline=True, node_id=node_id)

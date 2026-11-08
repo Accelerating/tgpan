@@ -336,8 +336,55 @@ nav {
 }
 .heading-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.shared-folder-path {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.shared-folder-path button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  height: auto;
+  min-height: 32px;
+}
+.shared-folder-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.shared-folder-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5edf9;
+}
+.shared-folder-list .file-name {
+  flex: 1;
+  min-width: 0;
+}
+.shared-folder-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+.shared-folder-preview {
+  margin-top: 20px;
+}
+.shared-folder-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.shared-folder-preview-heading strong {
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .storage-strip {
   display: flex;

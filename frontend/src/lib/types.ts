@@ -68,7 +68,17 @@ export interface PublicShareInfo {
   title: string;
   requires_password: boolean;
   name?: string;
+  kind?: "file" | "folder";
   size?: number;
   preview_kind?: "image" | "video" | null;
   expires_at?: number | null;
+}
+
+export type PublicNode = Pick<
+  Node,
+  "id" | "name" | "kind" | "size" | "updated_at" | "preview_kind"
+>;
+export interface PublicListing {
+  items: PublicNode[];
+  breadcrumbs: { id: string; name: string }[];
 }
