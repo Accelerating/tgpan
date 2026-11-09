@@ -207,7 +207,7 @@ nav {
   background: #2878ef;
   margin-left: auto;
 }
-.nav-item:nth-child(5) {
+.nav-item:nth-child(4) {
   margin-top: 21px;
 }
 .sidebar-bottom {
@@ -1995,5 +1995,38 @@ nav {
   }
   .transfer-status-heading small {
     display: block;
+  }
+}
+
+.transfer-dialog {
+  width: calc(100% - 32px);
+  max-height: min(760px, calc(100dvh - 48px));
+}
+.transfer-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-right: 56px;
+  border-bottom: 1px solid #edf0f5;
+}
+.transfer-dialog-body {
+  padding: 20px;
+}
+.transfer-dialog-body .settings-panel {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .transfer-dialog-body {
+    padding: 12px;
+  }
+  .transfer-dialog .transfer-info {
+    min-width: 0;
+    flex-basis: calc(100% - 55px);
+  }
+  .transfer-dialog .section-heading {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }

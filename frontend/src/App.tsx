@@ -12,7 +12,6 @@ import {
   Menu,
   Settings as SettingsIcon,
   Trash2,
-  UploadCloud,
   Download,
   UsersRound,
   X,
@@ -24,7 +23,7 @@ import type { System, User, Transfers as TransferData } from "./lib/types";
 import Files from "./pages/Files";
 import Login from "./pages/Login";
 import Settings from "./pages/Settings";
-import Transfers from "./pages/Transfers";
+import TransferDialog from "./components/transfers/TransferDialog";
 import Users from "./pages/Users";
 import PublicShare from "./pages/PublicShare";
 import Shares from "./pages/Shares";
@@ -33,17 +32,9 @@ import { Dialog } from "./components/Shared";
 import TransferStatus from "./components/TransferStatus";
 import { transferSummary } from "./lib/transfers";
 import { usePageScroll } from "./lib/navigation";
-type Page =
-  | "files"
-  | "transfers"
-  | "offline"
-  | "trash"
-  | "shares"
-  | "settings"
-  | "users";
+type Page = "files" | "offline" | "trash" | "shares" | "settings" | "users";
 const pages = {
   files: t("我的文件"),
-  transfers: t("传输任务"),
   offline: t("离线下载"),
   trash: t("回收站"),
   shares: t("我的分享"),
@@ -206,6 +197,7 @@ function Drive({
 }) {
   const { data: system, error: systemError } = useData<System>("/system");
   const uploader = useUploader(system, refresh);
+  const [transfersOpen, setTransfersOpen] = useState(false);
   const [folderTarget, setFolderTarget] = useState<string | null>(null);
   const transfers = useData<TransferData>("/transfers", version, 2000, true);
   const summary = transferSummary(uploader.jobs, transfers.data?.uploads || []);
@@ -215,13 +207,13 @@ function Drive({
     changePage(next);
   };
   const openFolder = (parent: string | null) => {
+    setTransfersOpen(false);
     rememberScroll(parent !== folderTarget ? "files" : undefined);
     setFolderTarget(parent);
     changePage("files");
   };
   const nav = [
     { id: "files", label: t("我的文件"), icon: FolderClosed },
-    { id: "transfers", label: t("传输任务"), icon: UploadCloud },
     { id: "offline", label: t("离线下载"), icon: Download },
     { id: "trash", label: t("回收站"), icon: Trash2 },
     { id: "shares", label: t("我的分享"), icon: Link2 },
@@ -274,9 +266,6 @@ function Drive({
             >
               <item.icon size={19} />
               <span>{item.label}</span>
-              {item.id === "transfers" && summary.count > 0 && (
-                <span className="transfer-count">{summary.count}</span>
-              )}
               {page === item.id && <span className="nav-dot" />}
             </button>
           ))}
@@ -319,6 +308,8 @@ function Drive({
               parent={folderTarget}
               onNavigate={setFolderTarget}
               trash={false}
+              onOpenTransfers={() => setTransfersOpen(true)}
+              transferCount={summary.count}
               version={version}
               refresh={refresh}
               notify={notify}
@@ -332,16 +323,6 @@ function Drive({
               refresh={refresh}
               notify={notify}
               enqueue={enqueue}
-            />
-          ) : page === "transfers" ? (
-            <Transfers
-              data={transfers.data}
-              error={transfers.error}
-              refresh={refresh}
-              notify={notify}
-              {...uploader}
-              enqueue={enqueue}
-              onOpenFolder={openFolder}
             />
           ) : page === "offline" ? (
             <Offline
@@ -368,12 +349,24 @@ function Drive({
           summary={summary}
           uploads={transfers.data?.uploads || []}
           jobs={uploader.jobs}
-          visible={page !== "transfers"}
-          onOpen={() => navigate("transfers")}
+          visible={!transfersOpen}
+          onOpen={() => setTransfersOpen(true)}
           notify={notify}
           refresh={refresh}
         />
       </div>
+      {transfersOpen && (
+        <TransferDialog
+          data={transfers.data}
+          error={transfers.error}
+          refresh={refresh}
+          notify={notify}
+          {...uploader}
+          enqueue={enqueue}
+          onOpenFolder={openFolder}
+          onClose={() => setTransfersOpen(false)}
+        />
+      )}
       {notice && <Toast notice={notice} close={closeNotice} />}
       {uploader.conflict && (
         <Dialog

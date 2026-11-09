@@ -18,6 +18,7 @@ import {
   Search,
   Trash2,
   Upload,
+  UploadCloud,
   X,
 } from "lucide-react";
 import { api, date, errorText, formatSize } from "../lib/api";
@@ -50,6 +51,8 @@ export default function Files({
   enqueue,
   parent = null,
   onNavigate,
+  onOpenTransfers,
+  transferCount = 0,
 }: {
   trash: boolean;
   version: number;
@@ -58,6 +61,8 @@ export default function Files({
   enqueue: (files: File[], parent: string | null) => void;
   parent?: string | null;
   onNavigate?: (parent: string | null) => void;
+  onOpenTransfers?: () => void;
+  transferCount?: number;
 }) {
   const [share, setShare] = useState<Node | null>(null);
   const [preview, setPreview] = useState<Node | null>(null);
@@ -268,6 +273,16 @@ export default function Files({
             </Button>
           ) : (
             <>
+              <Button
+                variant="bordered"
+                startContent={<UploadCloud size={17} />}
+                onPress={onOpenTransfers}
+              >
+                {t("传输任务")}
+                {transferCount > 0 && (
+                  <span className="transfer-count">{transferCount}</span>
+                )}
+              </Button>
               <Button
                 variant="bordered"
                 startContent={<FolderPlus size={17} />}
