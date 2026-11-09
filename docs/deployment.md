@@ -65,7 +65,7 @@ TGPAN_PORT 同时用于寻找需要停止的旧进程；更改端口前，应先
 
 ## systemd + Caddy 原生部署
 
-原生部署适合没有 Docker、内存约 1GB 的 VPS。前端在开发机器构建，服务器仅运行 Python 后端；仓库内提供 `deploy/tgpan.service` 和 `deploy/Caddyfile.example`。不要将本地 `.env`、数据库、Bot Token 或密钥复制到服务器。
+原生部署适合没有 Docker、内存约 1GB 的 VPS。首次部署可在开发机器构建前端并上传产物，后续一键更新在服务器构建；运行时由 Python 后端提供 API 和静态文件。仓库内提供 `deploy/tgpan.service` 和 `deploy/Caddyfile.example`。不要将本地 `.env`、数据库、Bot Token 或密钥复制到服务器。
 
 目录约定：
 
@@ -129,14 +129,14 @@ curl -fsS https://pan.zhcn.win/api/health
 后续生产更新统一使用一键更新脚本。先按下文备份 PostgreSQL 数据库和数据目录，然后使用有代码写入权限及 systemd 服务管理权限的部署账号执行（通常为 root）：
 
 ```sh
-UV_PYTHON_INSTALL_DIR=/opt/tgpan-python /opt/tgpan/scripts/update.sh
+UV_PYTHON_INSTALL_DIR=/opt/tgpan-python NODE_OPTIONS=--max-old-space-size=384 /opt/tgpan/scripts/update.sh
 curl -fsS http://127.0.0.1:8000/api/health
 curl -fsS https://pan.zhcn.win/api/health
 ```
 
 脚本依次停止 `tgpan.service`、对当前分支执行 `git pull --ff-only`、安装前端依赖并构建和复制静态文件、执行 `uv sync --locked --no-dev`，最后启动服务并检查 systemd 活动状态。后端启动时自动执行数据库表结构升级。服务配置和运行环境继续由 systemd 加载，无需把生产环境配置复制到 `backend/.env`。
 
-服务器需安装 Git、uv、Node.js、pnpm、python3 和 lsof，并配置 Git 远程仓库的非交互读取权限；一键更新会在服务器构建前端，1GB VPS 需确保足够的可用内存。可从任意目录使用脚本绝对路径运行。脚本确认服务工作目录属于本项目，并在停止服务前拒绝未提交或未跟踪文件；仓库必须处于有上游分支的正常分支。分支分叉时拒绝合并，不自动覆盖或暂存本地改动。
+服务器需安装 Git、uv、Node.js、pnpm、python3 和 lsof，并配置 Git 远程仓库的非交互读取权限；一键更新会在服务器构建前端，1GB VPS 需确保足够的可用内存；上述命令限制 Node.js 堆为 384MiB，dedione 已验证构建成功。可从任意目录使用脚本绝对路径运行。脚本确认服务工作目录属于本项目，并在停止服务前拒绝未提交或未跟踪文件；仓库必须处于有上游分支的正常分支。分支分叉时拒绝合并，不自动覆盖或暂存本地改动。
 
 拉取、构建或依赖同步失败时不会继续启动服务，解决错误后重新运行脚本。启动失败使用 `journalctl -u tgpan` 排查；脚本不自动回退代码或数据库，也不自动修改 systemd 单元文件。若发布包含单元配置变更，需另行安装单元并执行 `systemctl daemon-reload`。备份 `/var/lib/tgpan` 时先停止服务，确保同时保留 `secret.key` 和在途上传、离线文件。
 
