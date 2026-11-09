@@ -52,7 +52,7 @@ MESSAGES = {
     "找不到频道，请检查频道 ID，并将机器人添加为管理员": "Channel not found. Check its ID and add the bot as an administrator.",
     "拒绝跨站请求": "Cross-site requests are not allowed.",
     "接口不存在": "API endpoint not found",
-    "数据库暂不可用，请检查磁盘空间后重试": "Database temporarily unavailable. Check disk space and try again.",
+    "数据库暂不可用，请检查连接后重试": "Database temporarily unavailable. Check the connection and try again.",
     "文件块超过 Bot API 下载限制，请检查存储块配置": "The file block exceeds the Bot API download limit. Check the storage block settings.",
     "文件存储记录不完整": "File storage records are incomplete.",
     "文件存储记录不完整，请重新上传": "File storage records are incomplete. Please upload again.",

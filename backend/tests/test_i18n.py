@@ -100,9 +100,9 @@ def test_stored_errors_are_translated_per_request_without_changing_data(setup):
     config = client.get("/api/storage").json()[0]
     task = client.post("/api/uploads", json={"name": "我的文件", "size": 1, "fingerprint": "a" * 64}).json()
     message = "临时文件不完整，请取消后重新上传"
-    app.state.db.execute("UPDATE uploads SET error=? WHERE id=?", (message, task["id"]))
+    app.state.db.execute("UPDATE uploads SET error=%s WHERE id=%s", (message, task["id"]))
     app.state.db.execute(
-        "INSERT INTO cleanup VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO cleanup VALUES (%s,%s,%s,%s,%s,%s,%s)",
         (
             "cleanup-i18n",
             app.state.db.one("SELECT id FROM users")["id"],
@@ -120,7 +120,7 @@ def test_stored_errors_are_translated_per_request_without_changing_data(setup):
     assert data["uploads"][0]["name"] == "我的文件"
     assert data["uploads"][0]["error"] == expected
     assert data["cleanup"][0]["error"] == expected
-    assert app.state.db.one("SELECT error FROM uploads WHERE id=?", (task["id"],))["error"] == message
+    assert app.state.db.one("SELECT error FROM uploads WHERE id=%s", (task["id"],))["error"] == message
     assert client.get(f"/api/uploads/{task['id']}").json()["error"] == message
 
 

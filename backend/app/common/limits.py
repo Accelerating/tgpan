@@ -31,15 +31,15 @@ def take_attempts(db, rules):
     """Reserve attempts atomically; rules contain (key, limit, window_seconds)."""
     now = time.time()
     with db.connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute("DELETE FROM login_attempts WHERE time<?", (now - 900,))
+        conn.execute("SELECT pg_advisory_xact_lock(74647262)")
+        conn.execute("DELETE FROM login_attempts WHERE time<%s", (now - 900,))
         for key, limit, window in rules:
             count = conn.execute(
-                "SELECT count(*) FROM login_attempts WHERE address=? AND time>?", (key, now - window)
-            ).fetchone()[0]
+                "SELECT count(*) FROM login_attempts WHERE address=%s AND time>%s", (key, now - window)
+            ).fetchone()["count"]
             if count >= limit:
                 raise HTTPException(429, "尝试过多，请稍后重试", headers={"Retry-After": str(window)})
-        conn.executemany("INSERT INTO login_attempts VALUES (?,?)", [(key, now) for key, _, _ in rules])
+        conn.cursor().executemany("INSERT INTO login_attempts VALUES (%s,%s)", [(key, now) for key, _, _ in rules])
 
 
 class CapacityLimiter:

@@ -1,6 +1,6 @@
 # 技术栈和结构
 
-后端：Python 3.13、FastAPI、Uvicorn、HTTPX + 官方云端 Telegram Bot API，使用 uv 和 uv.lock 锁定依赖。数据库使用 Python 自带 sqlite3，开启外键及 WAL；通过 `PRAGMA user_version` 管理版本迁移，未知版本拒绝启动。密码用 Argon2id，Bot Token 用 Fernet 加密。
+后端：Python 3.13、FastAPI、Uvicorn、HTTPX + 官方云端 Telegram Bot API，使用 uv 和 uv.lock 锁定依赖。数据库使用 PostgreSQL 16+，通过 psycopg 连接池访问；以 `schema_version` 表管理版本，事务及 advisory lock 保证初始化串行，未知版本拒绝启动。密码用 Argon2id，Bot Token 用 Fernet 加密。
 
 预览与下载共用 `files/delivery.py` 的鉴权、Range 解析及跨块流式输出，允许预览的媒体类型统一在 `files/media.py` 定义。文件列表返回 preview_kind，前端不重复维护类型清单。
 
@@ -18,7 +18,7 @@ backend/
     offline/      离线下载调度、aria2 子进程、种子清单与受限 HTTP 转发
     components/   aria2 检测、独立安装和更新
     main.py       应用生命周期和静态文件入口
-    cli.py        管理员初始化、密码重置、数据库备份
+    cli.py        管理员初始化、密码重置、旧 SQLite 数据导入
   tests/          使用模拟存储的集成测试
   static/         构建产物（由脚本或镜像构建生成）
 frontend/src/
@@ -30,13 +30,13 @@ scripts/          前端构建与复制脚本
 deploy/           原生 systemd 服务和 Caddy 反向代理模板
 ```
 
-后端只有一个 Uvicorn worker。应用通过文件锁禁止同一数据目录启动多个实例；后台任务在同一个事件循环中运行，不依赖 Redis 或 Celery。默认一个远程上传任务、一个下载任务。SQLite 事务保持简短，文件流使用有界缓冲，不把整个文件装入内存。
+后端只有一个 Uvicorn worker。应用通过文件锁禁止同一数据目录启动多个实例；后台任务在同一个事件循环中运行，不依赖 Redis 或 Celery。默认一个远程上传任务、一个下载任务。PostgreSQL 事务保持简短，文件流使用有界缓冲，不把整个文件装入内存。
 
 核心记录：`nodes` 维护目录树、名称和回收站状态；`uploads` 维护文件大小、上传进度、指纹和绑定配置；`blocks` 维护有序文件块、消息 ID、Bot API file_id 和 SHA256；`cleanup` 在文件元数据永久删除后保留远程清理所需的信息。
 
 文件夹上传通过 `files/folders.py` 在事务中解析目录路径，前端 `lib/folderUpload.ts` 统一处理选择器和拖放的目录树，再复用现有分块传输队列。目录分享在 `shares/service.py` 中逐级检查当前父目录链，限制浏览与文件读取的范围，并在流输出期间复查授权。未来打包下载可按目录遍历有序读取文件。业务层通过 `Storage` 协议访问存储，不依赖 Telegram 的目录概念。
 
-当前数据库版本为 4；文件块的 `file_id` 用于 getFile，消息 ID 单独用于删除，不通过频道消息 ID 猜测下载地址。迁移自动执行并保留现有数据。
+当前 PostgreSQL 数据库版本为 1；文件块的 `file_id` 用于 getFile，消息 ID 单独用于删除，不通过频道消息 ID 猜测下载地址。迁移自动执行并保留现有数据。
 
 `common/limits.py` 统一处理可信代理地址、尝试次数预留和无等待队列的并发限制；登录会话创建在写事务内重新检查凭据快照。`transfers/receiving.py` 负责接收容量预留和清理，网络接收不持有全局修改锁。连接测试使用独立并发名额及配置占用标记。接口文档默认关闭，公开文件读取不返回存储诊断。
 

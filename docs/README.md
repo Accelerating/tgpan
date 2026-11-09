@@ -1,6 +1,6 @@
 # TG Pan 私人网盘
 
-以 Telegram 私有频道存储文件，以 SQLite 维护目录与文件块映射。面向个人使用及 1 核 1GB 内存的 VPS；前后端分开开发，生产环境由 FastAPI 同时提供 API 和前端构建产物。
+以 Telegram 私有频道存储文件，以 PostgreSQL 维护目录与文件块映射。面向个人使用及 1 核 1GB 内存的 VPS；前后端分开开发，生产环境由 FastAPI 同时提供 API 和前端构建产物。
 
 - [技术栈和工程结构](architecture.md)
 - [本地运行、VPS 部署和备份](deployment.md)

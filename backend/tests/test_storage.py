@@ -164,17 +164,18 @@ def test_download_rejects_incomplete_or_wrong_ranges(adapter):
 
 
 def test_storage_block_limit_and_database_migration(tmp_path):
-    from app.common.db import SCHEMA, Database
+    from app.common.db import Database
 
     settings = Settings(proxy_url="", data_dir=tmp_path)
     assert settings.block_size == 16 * 1024**2
     with pytest.raises(ValueError):
         Settings(block_size=20 * 1024**2)
-    db = Database(tmp_path / "old.db")
-    with db.connect() as conn:
-        conn.executescript(SCHEMA)
-    db.migrate()
-    db.migrate()
-    with db.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
-        assert "file_id" in {row["name"] for row in conn.execute("PRAGMA table_info(blocks)")}
+    db = Database(settings.database_url, settings.database_schema)
+    db.open()
+    try:
+        db.migrate()
+        db.migrate()
+        assert db.one("SELECT version FROM schema_version")["version"] == 1
+        assert db.one("SELECT count(*) FROM offline_settings")["count"] == 1
+    finally:
+        db.close()

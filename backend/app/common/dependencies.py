@@ -8,7 +8,7 @@ def current_user(request: Request):
     token = request.cookies.get("tgpan_session", "")
     user = request.app.state.db.one(
         "SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id "
-        "WHERE s.token=? AND s.expires>? AND u.disabled=0",
+        "WHERE s.token=%s AND s.expires>%s AND u.disabled=0",
         (request.app.state.secrets_digest(token), time.time()),
     )
     if not user:

@@ -82,7 +82,7 @@ def test_inflight_login_cannot_survive_password_reset_or_disabling(setup, monkey
             try:
                 assert verified.wait(2)
                 if disable:
-                    app.state.db.execute("UPDATE users SET disabled=1 WHERE id=?", (identity,))
+                    app.state.db.execute("UPDATE users SET disabled=1 WHERE id=%s", (identity,))
                 else:
                     assert (
                         client.patch(
@@ -115,7 +115,7 @@ async def async_client(tmp_path, storage=None):
     )
     async with app.router.lifespan_context(app):
         app.state.db.execute(
-            "INSERT INTO users VALUES (?,?,?,?,?,?)",
+            "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
             ("audit", "admin", passwords.hash("test-password-123"), 1, 0, time.time()),
         )
         async with httpx.AsyncClient(
@@ -303,7 +303,7 @@ def test_password_change_cannot_overwrite_a_concurrent_admin_reset(setup, monkey
                 release.set()
             assert changing.result(timeout=3).status_code == 401
         assert passwords.verify(
-            app.state.db.one("SELECT password FROM users WHERE id=?", (target["id"],))["password"],
+            app.state.db.one("SELECT password FROM users WHERE id=%s", (target["id"],))["password"],
             "admin-new-password",
         )
     finally:

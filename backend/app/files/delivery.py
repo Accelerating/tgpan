@@ -36,13 +36,13 @@ async def file_response(node_id: str, request: Request, user: dict, inline=False
     mime = media_type(node["name"]) if inline else "application/octet-stream"
     if inline and not mime:
         raise HTTPException(415, "此格式暂不支持在线预览，请下载后打开")
-    upload = state.db.one("SELECT * FROM uploads WHERE node_id=? AND state='complete'", (node_id,))
+    upload = state.db.one("SELECT * FROM uploads WHERE node_id=%s AND state='complete'", (node_id,))
     if not upload:
         raise HTTPException(409, "文件存储记录不完整")
     start, end, status = byte_range(request.headers.get("range"), node["size"])
     if inline and status == 206:
         end = min(end, start + 4 * 1024**2 - 1)
-    blocks = state.db.all("SELECT * FROM blocks WHERE upload_id=? ORDER BY position", (upload["id"],))
+    blocks = state.db.all("SELECT * FROM blocks WHERE upload_id=%s ORDER BY position", (upload["id"],))
     if any(not block["file_id"] for block in blocks):
         raise HTTPException(409, "文件存储记录不完整，请重新上传")
     config = get_config(state, user["id"], upload["config_id"])

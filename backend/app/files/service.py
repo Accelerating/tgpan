@@ -14,7 +14,7 @@ def clean_name(value: str):
 
 
 def get_node(db, owner, node_id, active=True):
-    node = db.one("SELECT * FROM nodes WHERE id=? AND owner_id=?", (node_id, owner))
+    node = db.one("SELECT * FROM nodes WHERE id=%s AND owner_id=%s", (node_id, owner))
     if not node or (active and node["deleted_at"] is not None):
         raise HTTPException(404, "文件或目录不存在")
     return node
@@ -29,7 +29,7 @@ def check_parent(db, owner, parent):
 
 def descendants(db, node_id):
     return db.all(
-        "WITH RECURSIVE tree AS (SELECT * FROM nodes WHERE id=? UNION ALL "
+        "WITH RECURSIVE tree AS (SELECT * FROM nodes WHERE id=%s UNION ALL "
         "SELECT n.* FROM nodes n JOIN tree t ON n.parent_id=t.id) SELECT * FROM tree",
         (node_id,),
     )
@@ -39,9 +39,9 @@ def has_ready_files(db, owner, node_id):
     return bool(
         db.one(
             "WITH RECURSIVE tree AS ("
-            "SELECT id,kind,status FROM nodes WHERE id=? AND owner_id=? AND deleted_at IS NULL UNION ALL "
+            "SELECT id,kind,status FROM nodes WHERE id=%s AND owner_id=%s AND deleted_at IS NULL UNION ALL "
             "SELECT n.id,n.kind,n.status FROM nodes n JOIN tree t ON n.parent_id=t.id "
-            "WHERE n.owner_id=? AND n.deleted_at IS NULL) "
+            "WHERE n.owner_id=%s AND n.deleted_at IS NULL) "
             "SELECT 1 FROM tree WHERE kind='file' AND status='ready' LIMIT 1",
             (node_id, owner, owner),
         )
@@ -54,7 +54,7 @@ def add_node(db, owner, parent, name, kind, size=0, status="ready", keep_both=Fa
     if keep_both:
         original, counter = name, 1
         while db.one(
-            "SELECT id FROM nodes WHERE owner_id=? AND parent_id IS ? AND name=? AND deleted_at IS NULL",
+            "SELECT id FROM nodes WHERE owner_id=%s AND parent_id IS NOT DISTINCT FROM %s AND name=%s AND deleted_at IS NULL",
             (owner, parent, name),
         ):
             stem, dot, suffix = original.rpartition(".")
@@ -64,7 +64,7 @@ def add_node(db, owner, parent, name, kind, size=0, status="ready", keep_both=Fa
     now, identity = time.time(), new_id()
     db.execute(
         "INSERT INTO nodes(id,owner_id,parent_id,name,kind,size,status,created_at,updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         (identity, owner, parent, name, kind, size, status, now, now),
     )
     return get_node(db, owner, identity)
@@ -78,8 +78,8 @@ def move_nodes(db, owner, nodes, parent):
     with db.connect() as conn:
         for node in nodes:
             conflict = conn.execute(
-                "SELECT id FROM nodes WHERE owner_id=? AND parent_id IS ? AND name=? "
-                "AND deleted_at IS NULL AND id!=?",
+                "SELECT id FROM nodes WHERE owner_id=%s AND parent_id IS NOT DISTINCT FROM %s AND name=%s "
+                "AND deleted_at IS NULL AND id!=%s",
                 (owner, parent, node["name"], node["id"]),
             ).fetchone()
             if conflict:
@@ -88,7 +88,7 @@ def move_nodes(db, owner, nodes, parent):
                 )
         for node in nodes:
             conn.execute(
-                "UPDATE nodes SET parent_id=?,updated_at=? WHERE id=?",
+                "UPDATE nodes SET parent_id=%s,updated_at=%s WHERE id=%s",
                 (parent, time.time(), node["id"]),
             )
 
@@ -102,7 +102,7 @@ def purge_node(state, owner, identity):
     ids = [node["id"] for node in nodes]
     if any(state.active_downloads.get(identity) for identity in ids):
         raise HTTPException(409, "文件正在下载或预览，请结束后再永久删除")
-    placeholders = ",".join("?" * len(ids))
+    placeholders = ",".join(["%s"] * len(ids))
     uploads = db.all(f"SELECT id FROM uploads WHERE node_id IN ({placeholders})", ids)
     with db.connect() as conn:
         # Message deletion must survive removal of the file's visible metadata.
@@ -113,12 +113,12 @@ def purge_node(state, owner, identity):
         ).fetchall()
         for row in rows:
             conn.execute(
-                "INSERT OR IGNORE INTO cleanup VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO cleanup VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                 (new_id(), owner, row["config_id"], row["message_id"], "queued", None, time.time()),
             )
         conn.execute(f"DELETE FROM uploads WHERE node_id IN ({placeholders})", ids)
         for node in reversed(nodes):
-            conn.execute("DELETE FROM nodes WHERE id=?", (node["id"],))
+            conn.execute("DELETE FROM nodes WHERE id=%s", (node["id"],))
     for upload in uploads:
         for path in (state.settings.data_dir / "uploads").glob(f"{upload['id']}.*"):
             path.unlink(missing_ok=True)

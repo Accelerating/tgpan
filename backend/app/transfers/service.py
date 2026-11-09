@@ -11,7 +11,7 @@ from app.storage.service import safe_error
 
 
 def get_upload(state, owner, identity):
-    upload = state.db.one("SELECT * FROM uploads WHERE id=? AND owner_id=?", (identity, owner))
+    upload = state.db.one("SELECT * FROM uploads WHERE id=%s AND owner_id=%s", (identity, owner))
     if not upload:
         raise HTTPException(404, "上传任务不存在")
     return upload
@@ -52,12 +52,12 @@ class Worker:
                         out.truncate(block["size"])
                 else:
                     state.db.execute(
-                        "UPDATE uploads SET state='error',error=? WHERE id=?",
+                        "UPDATE uploads SET state='error',error=%s WHERE id=%s",
                         ("临时文件不完整，请取消后重新上传", block["upload_id"]),
                     )
             elif block["size"]:
                 state.db.execute(
-                    "UPDATE uploads SET state='error',error=? WHERE id=?",
+                    "UPDATE uploads SET state='error',error=%s WHERE id=%s",
                     ("临时文件丢失，请取消后重新上传", block["upload_id"]),
                 )
         known = {
@@ -70,13 +70,13 @@ class Worker:
         # A crash can occur after the last message mapping commits, before completion commits.
         with state.db.connect() as conn:
             conn.execute(
-                "UPDATE uploads SET state='complete',error=NULL,updated_at=? "
+                "UPDATE uploads SET state='complete',error=NULL,updated_at=%s "
                 "WHERE state IN ('receiving','sending') AND received=size "
                 "AND NOT EXISTS (SELECT 1 FROM blocks WHERE upload_id=uploads.id AND state!='sent')",
                 (time.time(),),
             )
             conn.execute(
-                "UPDATE nodes SET status='ready',updated_at=? WHERE status='uploading' "
+                "UPDATE nodes SET status='ready',updated_at=%s WHERE status='uploading' "
                 "AND id IN (SELECT node_id FROM uploads WHERE state='complete')",
                 (time.time(),),
             )
@@ -124,11 +124,11 @@ class Worker:
                 "ORDER BY u.created_at,b.position LIMIT 1"
             )
             if block:
-                db.execute("UPDATE blocks SET state='sending' WHERE id=?", (block["id"],))
+                db.execute("UPDATE blocks SET state='sending' WHERE id=%s", (block["id"],))
                 self.active_config = block["config_id"]
         if block:
             path = block_path(state, block["upload_id"], block["position"])
-            config = db.one("SELECT * FROM configs WHERE id=?", (block["config_id"],))
+            config = db.one("SELECT * FROM configs WHERE id=%s", (block["config_id"],))
             try:
                 checksum = await asyncio.to_thread(file_hash, path)
 
@@ -139,10 +139,10 @@ class Worker:
                     config, path, f"{block['upload_id']}.{block['position']}.bin", progress
                 )
                 async with state.mutation_lock:
-                    current = db.one("SELECT * FROM uploads WHERE id=?", (block["upload_id"],))
+                    current = db.one("SELECT * FROM uploads WHERE id=%s", (block["upload_id"],))
                     if not current or current["state"] in ("cancelled", "expired"):
                         db.execute(
-                            "INSERT OR IGNORE INTO cleanup VALUES (?,?,?,?,?,?,?)",
+                            "INSERT INTO cleanup VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                             (
                                 new_id(),
                                 block["owner_id"],
@@ -154,24 +154,24 @@ class Worker:
                             ),
                         )
                         if current:
-                            db.execute("DELETE FROM blocks WHERE id=?", (block["id"],))
+                            db.execute("DELETE FROM blocks WHERE id=%s", (block["id"],))
                     else:
                         db.execute(
-                            "UPDATE blocks SET state='sent',message_id=?,file_id=?,sha256=? WHERE id=?",
+                            "UPDATE blocks SET state='sent',message_id=%s,file_id=%s,sha256=%s WHERE id=%s",
                             (message.message_id, message.file_id, checksum, block["id"]),
                         )
                         remaining = db.one(
-                            "SELECT count(*) AS n FROM blocks WHERE upload_id=? AND state!='sent'",
+                            "SELECT count(*) AS n FROM blocks WHERE upload_id=%s AND state!='sent'",
                             (block["upload_id"],),
                         )["n"]
                         if current["received"] == current["size"] and remaining == 0:
                             with db.connect() as conn:
                                 conn.execute(
-                                    "UPDATE uploads SET state='complete',error=NULL,updated_at=? WHERE id=?",
+                                    "UPDATE uploads SET state='complete',error=NULL,updated_at=%s WHERE id=%s",
                                     (time.time(), current["id"]),
                                 )
                                 conn.execute(
-                                    "UPDATE nodes SET status='ready',updated_at=? WHERE id=?",
+                                    "UPDATE nodes SET status='ready',updated_at=%s WHERE id=%s",
                                     (time.time(), current["node_id"]),
                                 )
                 path.unlink(missing_ok=True)
@@ -179,15 +179,15 @@ class Worker:
                 raise
             except Exception as error:
                 async with state.mutation_lock:
-                    current = db.one("SELECT * FROM uploads WHERE id=?", (block["upload_id"],))
+                    current = db.one("SELECT * FROM uploads WHERE id=%s", (block["upload_id"],))
                     if current and current["state"] not in ("cancelled", "expired"):
-                        db.execute("UPDATE blocks SET state='queued' WHERE id=?", (block["id"],))
+                        db.execute("UPDATE blocks SET state='queued' WHERE id=%s", (block["id"],))
                         db.execute(
-                            "UPDATE uploads SET state='error',error=?,updated_at=? WHERE id=?",
+                            "UPDATE uploads SET state='error',error=%s,updated_at=%s WHERE id=%s",
                             (safe_error(error), time.time(), block["upload_id"]),
                         )
                     else:
-                        db.execute("DELETE FROM blocks WHERE id=?", (block["id"],))
+                        db.execute("DELETE FROM blocks WHERE id=%s", (block["id"],))
                         path.unlink(missing_ok=True)
             finally:
                 self.progress.pop(block["upload_id"], None)
@@ -196,16 +196,16 @@ class Worker:
         cleanup = db.one("SELECT * FROM cleanup WHERE state='queued' ORDER BY created_at LIMIT 1")
         if cleanup:
             self.active_config = cleanup["config_id"]
-            db.execute("UPDATE cleanup SET state='running' WHERE id=?", (cleanup["id"],))
+            db.execute("UPDATE cleanup SET state='running' WHERE id=%s", (cleanup["id"],))
             try:
-                config = db.one("SELECT * FROM configs WHERE id=?", (cleanup["config_id"],))
+                config = db.one("SELECT * FROM configs WHERE id=%s", (cleanup["config_id"],))
                 await state.storage.delete(config, cleanup["message_id"])
-                db.execute("DELETE FROM cleanup WHERE id=?", (cleanup["id"],))
+                db.execute("DELETE FROM cleanup WHERE id=%s", (cleanup["id"],))
             except asyncio.CancelledError:
                 raise
             except Exception as error:
                 db.execute(
-                    "UPDATE cleanup SET state='error',error=? WHERE id=?", (safe_error(error), cleanup["id"])
+                    "UPDATE cleanup SET state='error',error=%s WHERE id=%s", (safe_error(error), cleanup["id"])
                 )
             finally:
                 self.active_config = None
@@ -216,18 +216,18 @@ class Worker:
         state, now = self.state, time.time()
         async with state.mutation_lock:
             rows = state.db.all(
-                "SELECT * FROM uploads WHERE state IN ('receiving','error') AND updated_at<? "
+                "SELECT * FROM uploads WHERE state IN ('receiving','error') AND updated_at<%s "
                 "AND origin='browser'",
                 (now - state.settings.upload_ttl,),
             )
             for row in rows:
                 if row["id"] in state.upload_reservations:
                     continue
-                if state.db.one("SELECT id FROM blocks WHERE upload_id=? AND state='sending'", (row["id"],)):
+                if state.db.one("SELECT id FROM blocks WHERE upload_id=%s AND state='sending'", (row["id"],)):
                     continue
-                state.db.execute("UPDATE uploads SET state='expired' WHERE id=?", (row["id"],))
+                state.db.execute("UPDATE uploads SET state='expired' WHERE id=%s", (row["id"],))
                 state.db.execute(
-                    "UPDATE nodes SET status='cancelled',deleted_at=?,trash_root=id WHERE id=?",
+                    "UPDATE nodes SET status='cancelled',deleted_at=%s,trash_root=id WHERE id=%s",
                     (now, row["node_id"]),
                 )
                 purge_node(state, row["owner_id"], row["node_id"])

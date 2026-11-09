@@ -21,8 +21,8 @@ def resolve_folders(db, owner, parent, paths):
                     raise HTTPException(422, "一次最多上传 5000 个目录")
                 destination = resolved[key[:-1]]
                 node = conn.execute(
-                    "SELECT id,kind FROM nodes WHERE owner_id=? AND parent_id IS ? "
-                    "AND name=? AND deleted_at IS NULL",
+                    "SELECT id,kind FROM nodes WHERE owner_id=%s AND parent_id IS NOT DISTINCT FROM %s "
+                    "AND name=%s AND deleted_at IS NULL",
                     (owner, destination, name),
                 ).fetchone()
                 if node and node["kind"] != "folder":
@@ -32,7 +32,7 @@ def resolve_folders(db, owner, parent, paths):
                     now = time.time()
                     conn.execute(
                         "INSERT INTO nodes(id,owner_id,parent_id,name,kind,created_at,updated_at) "
-                        "VALUES (?,?,?,?,'folder',?,?)",
+                        "VALUES (%s,%s,%s,%s,'folder',%s,%s)",
                         (identity, owner, destination, name, now, now),
                     )
                 resolved[key] = identity

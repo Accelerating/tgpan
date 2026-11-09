@@ -68,7 +68,7 @@ def test_password_grant_cookie_blocks_direct_range_and_is_share_specific(setup):
     cookie = unlocked.headers["set-cookie"]
     assert "HttpOnly" in cookie and f"Path={path}" in cookie and "SameSite=lax" in cookie
     value = guest.cookies.get(COOKIE)
-    session = app.state.db.one("SELECT * FROM share_sessions WHERE token_hash=?", (digest(value),))
+    session = app.state.db.one("SELECT * FROM share_sessions WHERE token_hash=%s", (digest(value),))
     assert session["expires_at"] <= expiry.timestamp() and session["share_id"] == share["id"]
     assert guest.get(path + "/preview", headers={"Range": "bytes=-100"}).content == data[-100:]
     assert guest.get(path + "/download").content == data
@@ -77,7 +77,7 @@ def test_password_grant_cookie_blocks_direct_range_and_is_share_specific(setup):
         guest.get(public_path(other) + "/download", headers={"Cookie": f"{COOKIE}={value}"}).status_code
         == 403
     )
-    row = app.state.db.one("SELECT * FROM shares WHERE id=?", (share["id"],))
+    row = app.state.db.one("SELECT * FROM shares WHERE id=%s", (share["id"],))
     assert row["password"] != "correct-password" and row["token_cipher"] != share["path"].rsplit("/", 1)[-1]
     assert "password" not in client.get("/api/shares").json()[0]
     assert (
@@ -111,12 +111,12 @@ def test_expiration_revocation_and_expired_grant_are_enforced(setup):
         assert guest.post(path + "/unlock", json={"password": "test-secret"}).status_code == 200
         assert guest.get(path + "/preview", headers={"Range": "bytes=0-99"}).status_code == 206
         if mode == "expiry":
-            app.state.db.execute("UPDATE shares SET expires_at=? WHERE id=?", (time.time() - 1, share["id"]))
+            app.state.db.execute("UPDATE shares SET expires_at=%s WHERE id=%s", (time.time() - 1, share["id"]))
         elif mode == "revoke":
             assert client.delete("/api/shares/" + share["id"]).status_code == 200
         else:
             app.state.db.execute(
-                "UPDATE share_sessions SET expires_at=? WHERE share_id=?", (time.time() - 1, share["id"])
+                "UPDATE share_sessions SET expires_at=%s WHERE share_id=%s", (time.time() - 1, share["id"])
             )
         expected = 403 if mode == "grant" else 404
         for endpoint in ("/preview", "/download"):
@@ -143,7 +143,7 @@ def test_trash_revokes_nested_file_shares_and_restore_does_not_reactivate(setup)
     fresh = create(client, task)
     client.post("/api/files/batch", json={"ids": [folder["id"]], "action": "trash"})
     assert client.post("/api/files/batch", json={"ids": [folder["id"]], "action": "purge"}).status_code == 200
-    assert not app.state.db.one("SELECT id FROM shares WHERE id=?", (fresh["id"],))
+    assert not app.state.db.one("SELECT id FROM shares WHERE id=%s", (fresh["id"],))
     guest.close()
 
 
@@ -158,9 +158,9 @@ def test_shares_are_owner_isolated_and_disabled_accounts_block_access(setup):
     assert guest.get("/api/shares").json() == []
     assert guest.delete("/api/shares/" + share["id"]).status_code == 404
     assert guest.post("/api/shares", json={"node_id": task["node_id"]}).status_code == 404
-    owner = app.state.db.one("SELECT owner_id FROM shares WHERE id=?", (share["id"],))["owner_id"]
+    owner = app.state.db.one("SELECT owner_id FROM shares WHERE id=%s", (share["id"],))["owner_id"]
     assert owner != other["id"]
-    app.state.db.execute("UPDATE users SET disabled=1 WHERE id=?", (owner,))
+    app.state.db.execute("UPDATE users SET disabled=1 WHERE id=%s", (owner,))
     assert guest.get(public_path(share)).status_code == 404
     guest.close()
 
@@ -230,7 +230,7 @@ def test_expiration_stops_an_already_open_shared_stream(setup):
         response = await shared_file(token, request, inline=True)
         body = response.body_iterator
         assert len(await anext(body)) == 64
-        app.state.db.execute("UPDATE shares SET expires_at=? WHERE id=?", (time.time() - 1, share["id"]))
+        app.state.db.execute("UPDATE shares SET expires_at=%s WHERE id=%s", (time.time() - 1, share["id"]))
         await asyncio.sleep(1.05)
         with pytest.raises(HTTPException) as error:
             await anext(body)

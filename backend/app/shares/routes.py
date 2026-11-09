@@ -42,8 +42,8 @@ class Unlock(BaseModel):
 def listing(request: Request, user: User, node_id: str | None = None):
     state = request.app.state
     rows = state.db.all(
-        "SELECT s.*,n.name FROM shares s JOIN nodes n ON n.id=s.node_id WHERE s.owner_id=? "
-        "AND (? IS NULL OR s.node_id=?) ORDER BY s.created_at DESC",
+        "SELECT s.*,n.name FROM shares s JOIN nodes n ON n.id=s.node_id WHERE s.owner_id=%s "
+        "AND (%s::text IS NULL OR s.node_id=%s) ORDER BY s.created_at DESC",
         (user["id"], node_id, node_id),
     )
     return [owner_info(state, row) for row in rows]
@@ -71,7 +71,7 @@ async def create(body: ShareCreate, request: Request, user: User):
         token = secrets.token_urlsafe(32)
         identity = new_id()
         state.db.execute(
-            "INSERT INTO shares VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO shares VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 identity,
                 user["id"],
@@ -86,7 +86,7 @@ async def create(body: ShareCreate, request: Request, user: User):
             ),
         )
         row = state.db.one(
-            "SELECT s.*,n.name FROM shares s JOIN nodes n ON n.id=s.node_id WHERE s.id=?", (identity,)
+            "SELECT s.*,n.name FROM shares s JOIN nodes n ON n.id=s.node_id WHERE s.id=%s", (identity,)
         )
         return owner_info(state, row)
 
@@ -95,13 +95,13 @@ async def create(body: ShareCreate, request: Request, user: User):
 async def revoke(share_id: str, request: Request, user: User):
     state = request.app.state
     async with state.mutation_lock:
-        if not state.db.one("SELECT id FROM shares WHERE id=? AND owner_id=?", (share_id, user["id"])):
+        if not state.db.one("SELECT id FROM shares WHERE id=%s AND owner_id=%s", (share_id, user["id"])):
             raise HTTPException(404, "分享不存在")
         with state.db.connect() as conn:
             conn.execute(
-                "UPDATE shares SET revoked_at=coalesce(revoked_at,?) WHERE id=?", (time.time(), share_id)
+                "UPDATE shares SET revoked_at=coalesce(revoked_at,%s) WHERE id=%s", (time.time(), share_id)
             )
-            conn.execute("DELETE FROM share_sessions WHERE share_id=?", (share_id,))
+            conn.execute("DELETE FROM share_sessions WHERE share_id=%s", (share_id,))
     return {"ok": True}
 
 
@@ -125,11 +125,12 @@ async def unlock(token: str, body: Unlock, request: Request, response: Response)
     now = time.time()
     address = f"share:{share['id']}:{client_address(request)}"
     with state.db.connect() as conn:
-        conn.execute("DELETE FROM login_attempts WHERE time<?", (now - 900,))
-        count = conn.execute("SELECT count(*) FROM login_attempts WHERE address=?", (address,)).fetchone()[0]
+        conn.execute("SELECT pg_advisory_xact_lock(74647262)")
+        conn.execute("DELETE FROM login_attempts WHERE time<%s", (now - 900,))
+        count = conn.execute("SELECT count(*) FROM login_attempts WHERE address=%s", (address,)).fetchone()["count"]
         if count >= 10:
             raise HTTPException(429, "密码尝试过多，请 15 分钟后重试")
-        conn.execute("INSERT INTO login_attempts VALUES (?,?)", (address, now))
+        conn.execute("INSERT INTO login_attempts VALUES (%s,%s)", (address, now))
     with state.share_password_slots.acquire(address):
         try:
             await run_in_threadpool(passwords.verify, share["password"], body.password)
@@ -140,9 +141,9 @@ async def unlock(token: str, body: Unlock, request: Request, response: Response)
     session = secrets.token_urlsafe(32)
     expiry = min(time.time() + 86400, share["expires_at"] or float("inf"))
     with state.db.connect() as conn:
-        conn.execute("DELETE FROM share_sessions WHERE expires_at<=?", (time.time(),))
-        conn.execute("INSERT INTO share_sessions VALUES (?,?,?)", (digest(session), share["id"], expiry))
-        conn.execute("DELETE FROM login_attempts WHERE address=?", (address,))
+        conn.execute("DELETE FROM share_sessions WHERE expires_at<=%s", (time.time(),))
+        conn.execute("INSERT INTO share_sessions VALUES (%s,%s,%s)", (digest(session), share["id"], expiry))
+        conn.execute("DELETE FROM login_attempts WHERE address=%s", (address,))
     response.set_cookie(
         COOKIE,
         session,

@@ -175,7 +175,7 @@ def test_task_privacy_and_admin_component_permissions(offline):
     client, app, _ = offline
     task = client.post("/api/offline", json={"torrent": base64.b64encode(torrent()).decode()}).json()[0]
     app.state.db.execute(
-        "INSERT INTO users VALUES (?,?,?,?,?,?)",
+        "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
         (
             new_id(),
             "other",
@@ -252,7 +252,7 @@ def test_full_service_restart_resumes_local_import(tmp_path, monkeypatch, paused
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.components, "executable", lambda: "/fake/aria2c")
         app.state.db.execute(
-            "INSERT INTO users VALUES (?,?,?,?,?,?)",
+            "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
             (
                 new_id(),
                 "restart",
@@ -393,8 +393,8 @@ def test_recovery_finishes_committed_indexes_before_local_cleanup(offline):
     source.parent.mkdir(parents=True)
     source.write_bytes(bytes([1]) * 21000)
     with app.state.db.connect() as conn:
-        conn.execute("UPDATE offline_tasks SET state='paused' WHERE id=?", (task["id"],))
-        conn.execute("UPDATE offline_files SET complete=0 WHERE task_id=?", (task["id"],))
+        conn.execute("UPDATE offline_tasks SET state='paused' WHERE id=%s", (task["id"],))
+        conn.execute("UPDATE offline_files SET complete=0 WHERE task_id=%s", (task["id"],))
         conn.execute("UPDATE uploads SET state='receiving'")
         conn.execute("UPDATE nodes SET status='uploading' WHERE kind='file'")
     app.state.worker.recover()

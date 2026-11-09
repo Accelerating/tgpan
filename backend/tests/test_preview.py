@@ -57,10 +57,10 @@ def test_preview_caps_open_ranges_without_capping_download(setup):
     client, app, storage = setup
     task = ready(client, b"x", "big.webm")
     data = b"x" * (5 * 1024**2 + 17)
-    block = app.state.db.one("SELECT * FROM blocks WHERE upload_id=?", (task["id"],))
+    block = app.state.db.one("SELECT * FROM blocks WHERE upload_id=%s", (task["id"],))
     storage.messages[int(block["file_id"])] = data
-    app.state.db.execute("UPDATE blocks SET size=? WHERE id=?", (len(data), block["id"]))
-    app.state.db.execute("UPDATE nodes SET size=? WHERE id=?", (len(data), task["node_id"]))
+    app.state.db.execute("UPDATE blocks SET size=%s WHERE id=%s", (len(data), block["id"]))
+    app.state.db.execute("UPDATE nodes SET size=%s WHERE id=%s", (len(data), task["node_id"]))
     response = client.get(f"/api/files/{task['node_id']}/preview", headers={"Range": "bytes=0-"})
     assert response.status_code == 206 and len(response.content) == 4 * 1024**2
     assert response.headers["content-range"] == f"bytes 0-{4 * 1024**2 - 1}/{len(data)}"
@@ -86,7 +86,7 @@ def test_preview_ownership_trash_and_unsupported_types(setup):
     client.post("/api/files/batch", json={"ids": [task["node_id"]], "action": "trash"})
     assert client.get(url).status_code == 404
     user = client.post("/api/users", json={"username": "viewer", "password": "viewer-password"}).json()
-    owner = app.state.db.one("SELECT owner_id FROM nodes WHERE id=?", (task["node_id"],))["owner_id"]
+    owner = app.state.db.one("SELECT owner_id FROM nodes WHERE id=%s", (task["node_id"],))["owner_id"]
     assert user["id"] != owner
     client.cookies.clear()
     client.post("/api/auth/login", json={"username": "viewer", "password": "viewer-password"})

@@ -35,10 +35,10 @@ def test_move_changes_only_directory_mapping(setup, monkeypatch):
         assert response.status_code == 200, response.text
         for identity in ids:
             assert (
-                app.state.db.one("SELECT parent_id FROM nodes WHERE id=?", (identity,))["parent_id"] == parent
+                app.state.db.one("SELECT parent_id FROM nodes WHERE id=%s", (identity,))["parent_id"] == parent
             )
     assert (
-        app.state.db.one("SELECT parent_id FROM nodes WHERE id=?", (nested["node_id"],))["parent_id"]
+        app.state.db.one("SELECT parent_id FROM nodes WHERE id=%s", (nested["node_id"],))["parent_id"]
         == source["id"]
     )
     assert client.get("/api/public/shares/" + share["path"].rsplit("/", 1)[-1]).status_code == 200
@@ -86,4 +86,4 @@ def test_batch_move_rejects_directory_cycles(setup, into_child):
         },
     )
     assert response.status_code == 400
-    assert app.state.db.one("SELECT parent_id FROM nodes WHERE id=?", (source["id"],))["parent_id"] is None
+    assert app.state.db.one("SELECT parent_id FROM nodes WHERE id=%s", (source["id"],))["parent_id"] is None

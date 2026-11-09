@@ -2,7 +2,7 @@ from fastapi import HTTPException
 
 
 def get_config(state, owner, identity):
-    config = state.db.one("SELECT * FROM configs WHERE id=? AND owner_id=?", (identity, owner))
+    config = state.db.one("SELECT * FROM configs WHERE id=%s AND owner_id=%s", (identity, owner))
     if not config:
         raise HTTPException(404, "存储配置不存在")
     return config

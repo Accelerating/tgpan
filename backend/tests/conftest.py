@@ -49,7 +49,7 @@ def setup(tmp_path):
         client.headers["Accept-Language"] = "zh-CN"
         identity = new_id()
         app.state.db.execute(
-            "INSERT INTO users VALUES (?,?,?,?,?,?)",
+            "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
             (identity, "admin", passwords.hash("test-password-123"), 1, 0, time.time()),
         )
         response = client.post("/api/auth/login", json={"username": "admin", "password": "test-password-123"})
@@ -61,3 +61,21 @@ def setup(tmp_path):
         )
         assert config.status_code == 201, config.text
         yield client, app, storage
+
+
+@pytest.fixture(autouse=True)
+def database_schema(monkeypatch):
+    """Use the configured database, isolating each test in a disposable schema."""
+    import uuid
+
+    import psycopg
+    from psycopg import sql
+
+    schema = "test_" + uuid.uuid4().hex
+    with psycopg.connect(Settings().database_url, autocommit=True) as conn:
+        conn.execute(sql.SQL("CREATE SCHEMA {} ").format(sql.Identifier(schema)))
+        monkeypatch.setenv("TGPAN_DATABASE_SCHEMA", schema)
+        try:
+            yield schema
+        finally:
+            conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))

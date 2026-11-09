@@ -65,7 +65,7 @@ def settings(request: Request, user: User):
 @router.patch("/settings")
 async def update_settings(body: Policy, request: Request, user: Admin):
     request.app.state.db.execute(
-        "UPDATE offline_settings SET concurrency=?,max_bytes=?,reserve_bytes=? WHERE id=1",
+        "UPDATE offline_settings SET concurrency=%s,max_bytes=%s,reserve_bytes=%s WHERE id=1",
         (body.concurrency, body.max_bytes, body.reserve_bytes),
     )
     return {"ok": True}
@@ -77,7 +77,7 @@ def listing(request: Request, user: User):
     return [
         translate_fields(public_task(state, task), request, "error")
         for task in state.db.all(
-            "SELECT * FROM offline_tasks WHERE owner_id=? ORDER BY created_at DESC",
+            "SELECT * FROM offline_tasks WHERE owner_id=%s ORDER BY created_at DESC",
             (user["id"],),
         )
     ]
@@ -118,7 +118,7 @@ async def create(body: Create, request: Request, user: User):
         check_parent(state.db, user["id"], body.parent_id)
         config_id = body.config_id
         if not config_id:
-            default = state.db.one("SELECT id FROM configs WHERE owner_id=? AND is_default=1", (user["id"],))
+            default = state.db.one("SELECT id FROM configs WHERE owner_id=%s AND is_default=1", (user["id"],))
             if not default:
                 raise HTTPException(400, "请先在设置中添加默认 Telegram 存储配置")
             config_id = default["id"]
@@ -131,7 +131,7 @@ async def create(body: Create, request: Request, user: User):
                 (root / "source.torrent").write_bytes(data)
             state.db.execute(
                 "INSERT INTO offline_tasks(id,owner_id,config_id,parent_id,name,kind,source,state,phase,"
-                "total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "total,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     identity,
                     user["id"],
@@ -171,14 +171,14 @@ async def select(identity: str, body: Selection, request: Request, user: User):
         with state.db.connect() as conn:
             for file in files:
                 conn.execute(
-                    "UPDATE offline_files SET selected=? WHERE id=?",
+                    "UPDATE offline_files SET selected=%s WHERE id=%s",
                     (
-                        file["position"] in body.positions,
+                        int(file["position"] in body.positions),
                         file["id"],
                     ),
                 )
             conn.execute(
-                "UPDATE offline_tasks SET state='queued',total=?,updated_at=? WHERE id=?",
+                "UPDATE offline_tasks SET state='queued',total=%s,updated_at=%s WHERE id=%s",
                 (total, time.time(), identity),
             )
     return {"ok": True}
@@ -212,7 +212,7 @@ async def control(
                         value_error(error)
                     state.db.execute(
                         "UPDATE uploads SET state=CASE WHEN received=size THEN 'sending' ELSE 'receiving' END,"
-                        "error=NULL,updated_at=? WHERE id=? AND state='error'",
+                        "error=NULL,updated_at=%s WHERE id=%s AND state='error'",
                         (time.time(), file["upload_id"]),
                     )
             state.offline.update(identity, state="queued", error=None)
@@ -224,11 +224,11 @@ async def control(
     if action == "cancel":
         async with state.mutation_lock:
             for file in files_for(state, identity):
-                upload = state.db.one("SELECT state FROM uploads WHERE id=?", (file["upload_id"],))
+                upload = state.db.one("SELECT state FROM uploads WHERE id=%s", (file["upload_id"],))
                 if upload and upload["state"] not in ("complete", "cancelled", "expired"):
                     cancel_upload(state, user["id"], file["upload_id"])
                 elif upload and upload["state"] == "complete":
-                    state.db.execute("UPDATE offline_files SET complete=1 WHERE id=?", (file["id"],))
+                    state.db.execute("UPDATE offline_files SET complete=1 WHERE id=%s", (file["id"],))
         shutil.rmtree(task_directory(state, identity), ignore_errors=True)
     return {"ok": True}
 
@@ -242,6 +242,6 @@ async def remove(identity: str, request: Request, user: User):
             raise HTTPException(409, "请先取消任务再删除记录")
         if identity in state.offline.running and not state.offline.running[identity].done():
             raise HTTPException(409, "任务正在停止，请稍后")
-        state.db.execute("DELETE FROM offline_tasks WHERE id=?", (identity,))
+        state.db.execute("DELETE FROM offline_tasks WHERE id=%s", (identity,))
         state.offline.samples.pop(identity, None)
     return {"ok": True}

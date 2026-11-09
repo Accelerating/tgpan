@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TGPAN_", env_file=".env", extra="ignore")
+    database_url: str = Field(default="", validation_alias="DATABASE_URL")
+    database_schema: str = "public"
     data_dir: Path = Path("data")
     static_dir: Path = Path(__file__).resolve().parents[2] / "static"
     proxy_url: str = ""
@@ -29,7 +31,18 @@ class Settings(BaseSettings):
                 ip_network(network.strip(), strict=False)
         return value
 
+    @field_validator("database_schema")
+    @classmethod
+    def validate_schema(cls, value):
+        import re
+
+        if not re.fullmatch(r"[a-z_][a-z0-9_]*", value):
+            raise ValueError("数据库 schema 名称无效")
+        return value
+
     def prepare(self):
+        if not self.database_url:
+            raise ValueError("请设置 DATABASE_URL")
         self.data_dir = self.data_dir.resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         for name in ("uploads", "offline", "components"):

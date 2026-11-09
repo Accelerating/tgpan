@@ -1,13 +1,14 @@
 import asyncio
 import fcntl
 import hmac
-import sqlite3
 from collections import Counter
 from contextlib import asynccontextmanager
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from psycopg_pool import PoolTimeout
 from starlette.exceptions import HTTPException
 
 from app.accounts.routes import router as accounts
@@ -42,32 +43,39 @@ def create_app(settings: Settings | None = None, storage=None):
             raise RuntimeError("同一数据目录只允许一个后端进程，请勿开启多个 worker") from None
         state = app.state
         state.settings = settings
-        state.db = Database(settings.data_dir / "tgpan.db")
-        state.db.migrate()
-        state.secrets = Secrets(settings.data_dir)
-        state.secrets_digest = digest
-        state.storage = storage or TelegramStorage(settings, state.secrets)
-        state.mutation_lock = asyncio.Lock()
-        state.upload_slots = CapacityLimiter(2)
-        state.upload_reservations = {}
-        state.storage_test_slots = CapacityLimiter(2)
-        state.testing_configs = set()
-        state.password_slots = CapacityLimiter(4)
-        state.download_lock = asyncio.Lock()
-        state.preview_slots = asyncio.Semaphore(2)
-        state.share_password_slots = CapacityLimiter(2)
-        state.active_downloads = Counter()
-        state.worker = Worker(state)
-        state.components = Components(state)
-        state.offline = OfflineWorker(state)
-        await state.worker.start()
-        await state.offline.start()
+        state.db = Database(settings.database_url, settings.database_schema)
+        try:
+            state.db.open()
+            state.db.migrate()
+            state.secrets = Secrets(settings.data_dir)
+            state.secrets_digest = digest
+            state.storage = storage or TelegramStorage(settings, state.secrets)
+            state.mutation_lock = asyncio.Lock()
+            state.upload_slots = CapacityLimiter(2)
+            state.upload_reservations = {}
+            state.storage_test_slots = CapacityLimiter(2)
+            state.testing_configs = set()
+            state.password_slots = CapacityLimiter(4)
+            state.download_lock = asyncio.Lock()
+            state.preview_slots = asyncio.Semaphore(2)
+            state.share_password_slots = CapacityLimiter(2)
+            state.active_downloads = Counter()
+            state.worker = Worker(state)
+            state.components = Components(state)
+            state.offline = OfflineWorker(state)
+            await state.worker.start()
+            await state.offline.start()
+        except BaseException:
+            state.db.close()
+            lock_file.close()
+            raise
         try:
             yield
         finally:
             await state.offline.stop()
             await state.components.stop()
             await state.worker.stop()
+            state.db.close()
             lock_file.close()
 
     app = FastAPI(
@@ -133,13 +141,14 @@ def create_app(settings: Settings | None = None, storage=None):
             {"detail": translate("输入内容不符合要求，请检查后重试", request)}, status_code=422
         )
 
-    @app.exception_handler(sqlite3.IntegrityError)
+    @app.exception_handler(psycopg.IntegrityError)
     async def conflict(request, error):
         return JSONResponse({"detail": translate("名称已存在或项目仍被引用，请刷新后重试", request)}, status_code=409)
 
-    @app.exception_handler(sqlite3.OperationalError)
+    @app.exception_handler(PoolTimeout)
+    @app.exception_handler(psycopg.OperationalError)
     async def unavailable(request, error):
-        return JSONResponse({"detail": translate("数据库暂不可用，请检查磁盘空间后重试", request)}, status_code=503)
+        return JSONResponse({"detail": translate("数据库暂不可用，请检查连接后重试", request)}, status_code=503)
 
     @app.exception_handler(OSError)
     async def disk_error(request, error):

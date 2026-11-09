@@ -13,7 +13,7 @@ def live_share(state, token):
     share = state.db.one(
         "SELECT s.*,n.name,n.size,n.kind,n.status,n.deleted_at,u.disabled "
         "FROM shares s JOIN nodes n ON n.id=s.node_id AND n.owner_id=s.owner_id "
-        "JOIN users u ON u.id=s.owner_id WHERE s.token_hash=?",
+        "JOIN users u ON u.id=s.owner_id WHERE s.token_hash=%s",
         (digest(token),),
     )
     if (
@@ -37,7 +37,7 @@ def has_access(state, share, request):
     return bool(
         session
         and state.db.one(
-            "SELECT token_hash FROM share_sessions WHERE token_hash=? AND share_id=? AND expires_at>?",
+            "SELECT token_hash FROM share_sessions WHERE token_hash=%s AND share_id=%s AND expires_at>%s",
             (digest(session), share["id"], time.time()),
         )
     )
@@ -82,8 +82,8 @@ def folder_listing(state, share, parent_id):
     if parent["kind"] != "folder":
         raise HTTPException(400, "目标必须是目录")
     rows = state.db.all(
-        "SELECT id,name,kind,size,updated_at FROM nodes WHERE owner_id=? AND parent_id=? "
-        "AND deleted_at IS NULL AND status='ready' ORDER BY kind DESC,name COLLATE NOCASE",
+        "SELECT id,name,kind,size,updated_at FROM nodes WHERE owner_id=%s AND parent_id=%s "
+        "AND deleted_at IS NULL AND status='ready' ORDER BY kind DESC,lower(name),name",
         (share["owner_id"], parent["id"]),
     )
     rows = [

@@ -34,7 +34,7 @@ def test_folder_upload_hierarchy_reuse_and_file_transfer(setup):
     assert resolve(client, paths, destination["id"]).json() == ids
     assert len(app.state.db.all("SELECT id FROM nodes")) == 5
     assert (
-        app.state.db.one("SELECT parent_id FROM nodes WHERE id=?", (ids["photos/2026/events"],))["parent_id"]
+        app.state.db.one("SELECT parent_id FROM nodes WHERE id=%s", (ids["photos/2026/events"],))["parent_id"]
         == ids["photos/2026"]
     )
     task, content = ready(client, "image.png", ids["photos/2026/events"])
@@ -64,7 +64,7 @@ def test_folder_upload_conflict_rolls_back_and_enforces_ownership(setup):
     assert resolve(client, ["child"], parent["id"]).status_code == 404
     assert resolve(client, ["/".join(["a"] * 101)]).status_code == 422
     other = client.post("/api/users", json={"username": "other", "password": "other-password"}).json()
-    app.state.db.execute("UPDATE nodes SET owner_id=? WHERE id=?", (other["id"], parent["id"]))
+    app.state.db.execute("UPDATE nodes SET owner_id=%s WHERE id=%s", (other["id"], parent["id"]))
     assert resolve(client, ["child"], parent["id"]).status_code == 404
 
 
@@ -134,7 +134,7 @@ def test_folder_share_invalidation(setup, mode):
         client.post("/api/files/batch", json={"ids": [root["id"]], "action": "trash"})
         client.post("/api/files/batch", json={"ids": [root["id"]], "action": "restore"})
     elif mode == "expire":
-        app.state.db.execute("UPDATE shares SET expires_at=0 WHERE id=?", (share["id"],))
+        app.state.db.execute("UPDATE shares SET expires_at=0 WHERE id=%s", (share["id"],))
     else:
         app.state.db.execute("UPDATE users SET disabled=1")
     with guest_client(app) as guest:
@@ -160,7 +160,7 @@ def test_moving_file_out_interrupts_shared_stream(setup):
         response = await shared_file(token, request, node_id=task["node_id"])
         iterator = response.body_iterator
         await anext(iterator)
-        app.state.db.execute("UPDATE nodes SET parent_id=NULL WHERE id=?", (task["node_id"],))
+        app.state.db.execute("UPDATE nodes SET parent_id=NULL WHERE id=%s", (task["node_id"],))
         await asyncio.sleep(1.05)
         with pytest.raises(HTTPException) as error:
             await anext(iterator)

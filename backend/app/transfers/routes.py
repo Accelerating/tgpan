@@ -34,8 +34,8 @@ def transfers(request: Request, user: User):
     state = request.app.state
     uploads = state.db.all(
         "SELECT u.*,n.name,n.parent_id, "
-        "coalesce((SELECT sum(size) FROM blocks WHERE upload_id=u.id AND state='sent'),0) AS stored "
-        "FROM uploads u JOIN nodes n ON n.id=u.node_id WHERE u.owner_id=? AND u.origin='browser' "
+        "coalesce((SELECT sum(size)::bigint FROM blocks WHERE upload_id=u.id AND state='sent'),0) AS stored "
+        "FROM uploads u JOIN nodes n ON n.id=u.node_id WHERE u.owner_id=%s AND u.origin='browser' "
         "ORDER BY u.created_at DESC",
         (user["id"],),
     )
@@ -46,7 +46,7 @@ def transfers(request: Request, user: User):
         "cleanup": [
             translate_fields(task, request, "error")
             for task in state.db.all(
-                "SELECT id,state,error,created_at FROM cleanup WHERE owner_id=?", (user["id"],)
+                "SELECT id,state,error,created_at FROM cleanup WHERE owner_id=%s", (user["id"],)
             )
         ],
     }
@@ -60,7 +60,7 @@ async def create_upload(body: UploadCreate, request: Request, user: User):
     async with state.mutation_lock:
         config_id = body.config_id
         if not config_id:
-            default = state.db.one("SELECT id FROM configs WHERE owner_id=? AND is_default=1", (user["id"],))
+            default = state.db.one("SELECT id FROM configs WHERE owner_id=%s AND is_default=1", (user["id"],))
             if not default:
                 raise HTTPException(400, "请先在设置中添加默认 Telegram 存储配置")
             config_id = default["id"]
@@ -68,8 +68,8 @@ async def create_upload(body: UploadCreate, request: Request, user: User):
         # Reuse an existing task only for an explicit re-selection in the same destination.
         existing = state.db.one(
             "SELECT u.* FROM uploads u JOIN nodes n ON n.id=u.node_id "
-            "WHERE u.owner_id=? AND u.fingerprint=? AND u.size=? AND u.config_id=? "
-            "AND n.parent_id IS ? AND n.name=? AND n.deleted_at IS NULL "
+            "WHERE u.owner_id=%s AND u.fingerprint=%s AND u.size=%s AND u.config_id=%s "
+            "AND n.parent_id IS NOT DISTINCT FROM %s AND n.name=%s AND n.deleted_at IS NULL "
             "AND u.state IN ('receiving','sending','error')",
             (user["id"], body.fingerprint, body.size, config_id, body.parent_id, body.name),
         )
@@ -89,15 +89,15 @@ async def create_upload(body: UploadCreate, request: Request, user: User):
         try:
             state.db.execute(
                 "INSERT INTO uploads(id,owner_id,node_id,config_id,fingerprint,size,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                 (identity, user["id"], node["id"], config_id, body.fingerprint, body.size, now, now),
             )
         except BaseException:
-            state.db.execute("DELETE FROM nodes WHERE id=?", (node["id"],))
+            state.db.execute("DELETE FROM nodes WHERE id=%s", (node["id"],))
             raise
         if body.size == 0:
-            state.db.execute("UPDATE uploads SET state='complete' WHERE id=?", (identity,))
-            state.db.execute("UPDATE nodes SET status='ready' WHERE id=?", (node["id"],))
+            state.db.execute("UPDATE uploads SET state='complete' WHERE id=%s", (identity,))
+            state.db.execute("UPDATE nodes SET status='ready' WHERE id=%s", (node["id"],))
         return get_upload(state, user["id"], identity)
 
 
@@ -153,12 +153,12 @@ async def chunk(upload_id: str, request: Request, user: User, offset: int = 0):
                 upload_state = "sending" if offset + received == upload["size"] else "receiving"
                 with state.db.connect() as conn:
                     conn.execute(
-                        "INSERT INTO blocks(id,upload_id,position,size,state) VALUES (?,?,?,?,?) "
+                        "INSERT INTO blocks(id,upload_id,position,size,state) VALUES (%s,%s,%s,%s,%s) "
                         "ON CONFLICT(upload_id,position) DO UPDATE SET size=excluded.size,state=excluded.state",
                         (new_id(), upload_id, position, size, block_state),
                     )
                     conn.execute(
-                        "UPDATE uploads SET received=?,state=?,updated_at=? WHERE id=?",
+                        "UPDATE uploads SET received=%s,state=%s,updated_at=%s WHERE id=%s",
                         (offset + received, upload_state, time.time(), upload_id),
                     )
         except TimeoutError:
@@ -174,14 +174,14 @@ async def retry(upload_id: str, request: Request, user: User):
         upload = get_upload(state, user["id"], upload_id)
         if upload["state"] != "error":
             raise HTTPException(409, "当前任务不需要重试")
-        blocks = state.db.all("SELECT * FROM blocks WHERE upload_id=? AND state!='sent'", (upload_id,))
+        blocks = state.db.all("SELECT * FROM blocks WHERE upload_id=%s AND state!='sent'", (upload_id,))
         for block in blocks:
             path = block_path(state, upload_id, block["position"])
             if not path.exists() or path.stat().st_size < block["size"]:
                 raise HTTPException(409, "临时文件缺失，请取消并重新上传")
         next_state = "sending" if upload["received"] == upload["size"] else "receiving"
         state.db.execute(
-            "UPDATE uploads SET state=?,error=NULL,updated_at=? WHERE id=?",
+            "UPDATE uploads SET state=%s,error=NULL,updated_at=%s WHERE id=%s",
             (next_state, time.time(), upload_id),
         )
     state.worker.notify()
@@ -199,7 +199,7 @@ async def cancel(upload_id: str, request: Request, user: User):
 @router.post("/cleanup/retry")
 def retry_cleanup(request: Request, user: User):
     request.app.state.db.execute(
-        "UPDATE cleanup SET state='queued',error=NULL WHERE owner_id=? AND state='error'", (user["id"],)
+        "UPDATE cleanup SET state='queued',error=NULL WHERE owner_id=%s AND state='error'", (user["id"],)
     )
     request.app.state.worker.notify()
     return {"ok": True}

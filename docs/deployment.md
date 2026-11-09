@@ -2,7 +2,16 @@
 
 ## 本地开发
 
-需要 Python 3.13、uv、Node.js 22 或更新版本及 pnpm 10.32.1。在项目根目录复制 `.env.example` 为 `.env`，无需申请 Telegram 应用凭据；本地 HTTP 开发要把 `TGPAN_PUBLIC_ORIGIN` 留空、`TGPAN_SECURE_COOKIE=false`。后端从自身工作目录读取 `.env`，可复制同一份到 `backend/.env`（该文件已忽略），或把环境变量导出到进程。Docker Compose 则读取根目录 `.env` 并注入容器。
+需要 PostgreSQL 16+、Python 3.13、uv、Node.js 22 或更新版本及 pnpm 10.32.1。在项目根目录复制 `.env.example` 为 `.env`，无需申请 Telegram 应用凭据；本地 HTTP 开发要把 `TGPAN_PUBLIC_ORIGIN` 留空、`TGPAN_SECURE_COOKIE=false`。后端从自身工作目录读取 `.env`，可复制同一份到 `backend/.env`（该文件已忽略），或把环境变量导出到进程。Docker Compose 则读取根目录 `.env` 并注入容器。
+
+先使用数据库管理员创建专用账号与数据库（替换示例密码）：
+
+```sql
+CREATE ROLE tgpan LOGIN PASSWORD 'change_me';
+CREATE DATABASE tgpan OWNER tgpan;
+```
+
+在 `.env` 设置 `DATABASE_URL=postgresql://tgpan:change_me@127.0.0.1:5432/tgpan`。本机与远程 PostgreSQL 都使用此配置；账号需拥有该库的建表权限，无需超级用户权限。密码中的特殊字符需 URL 编码。数据库版本迁移在启动时自动执行。密钥、在途上传及离线文件仍保存在 `TGPAN_DATA_DIR`，切换数据库不会取消单 worker 限制。
 
 ```sh
 cd backend
@@ -143,7 +152,7 @@ docker compose up -d
 
 Docker 多阶段构建在 Node 阶段构建前端，在 Python 阶段只保留后端、虚拟环境和静态文件；运行时不需要 Node 服务。数据保存到命名卷 `tgpan-data`，容器以 UID/GID 10001 非 root 用户运行。重建镜像和普通 `docker compose down` 保留数据；不要执行 `docker compose down -v`。
 
-1 核 1GB 的 VPS 建议在本地或 CI 构建镜像再传到 VPS，避免 Node 构建占用运行内存。构建机 CPU 架构应与 VPS 一致，或通过 buildx 指定对应平台。Compose 运行内存限制 512MB，单核，日志轮转；保留磁盘给操作系统、镜像、SQLite 和备份。2GiB 只是临时上传目录上限，不是整个数据卷的配额。
+1 核 1GB 的 VPS 建议在本地或 CI 构建镜像再传到 VPS，避免 Node 构建占用运行内存。构建机 CPU 架构应与 VPS 一致，或通过 buildx 指定对应平台。Compose 运行内存限制 512MB，单核，日志轮转；保留磁盘给操作系统、镜像、PostgreSQL 和备份。2GiB 只是临时上传目录上限，不是整个数据卷的配额。
 
 ### Nginx 示例
 
@@ -173,6 +182,7 @@ Docker 与本地启动脚本均禁用 Uvicorn 自动处理转发头，由应用�
 
 | 环境变量 | 默认值 | 含义 |
 | --- | --- | --- |
+| `DATABASE_URL` | 必填 | PostgreSQL 连接 URL，专用账号需拥有数据库 |
 | `TGPAN_DATA_DIR` | `data`，容器 `/data` | 持久化数据目录 |
 | `TGPAN_STATIC_DIR` | 后端 `static` | 前端构建目录 |
 | `TGPAN_PROXY_URL` | 空 | 可选 Telegram 代理 |
@@ -193,20 +203,30 @@ Docker 与本地启动脚本均禁用 Uvicorn 自动处理转发头，由应用�
 
 数据库不存文件内容，但存目录、配置、进度及消息映射。`secret.key` 丢失会导致 Token 无法解密。备份应加密并保管在服务器之外。
 
-最简单的一致备份方式是停止服务后备份整个数据卷，包括 `tgpan.db`、可能存在的 `tgpan.db-wal` / `tgpan.db-shm`、`secret.key`、`uploads/` 和 `offline/`。恢复时保持目录结构和容器 UID 10001 的读写权限。
-
-如只需在线数据库快照，可以执行：
+完整备份应停止后端，使用 PostgreSQL 客户端工具备份数据库，同时备份数据目录中的 `secret.key`、`uploads/` 和 `offline/`。数据库备份不能替代密钥和在途文件备份。客户端主版本须不低于服务端版本。
 
 ```sh
-docker compose exec app /app/.venv/bin/python -m app.cli backup /data/tgpan-backup.db
+# DATABASE_URL 已导出到当前 shell；配置文件不会自动导入 shell。
+pg_dump --dbname="$DATABASE_URL" --format=custom --file=tgpan.dump
+# 恢复到新建的空库，连接配置指向该库：
+pg_restore --dbname="$DATABASE_URL" --no-owner --no-acl tgpan.dump
 ```
 
-该命令使用 SQLite Backup API，不能替代密钥及在途上传的备份。需要完整可恢复的在途状态时使用停机整卷备份。
+### 从 SQLite 导入
+
+停止旧后端并保留原数据库备份和数据目录，在 `backend` 目录执行：
+
+```sh
+uv run python -m app.cli migrate-sqlite data/tgpan.db
+```
+
+目标 PostgreSQL 库必须没有业务数据，工具拒绝覆盖已有记录。支持旧 SQLite 版本 2～4，逐表导入并校验行数，所有导入在一个事务内完成，失败回滚。原 SQLite 文件保持不变，启动新后端时继续使用原 `TGPAN_DATA_DIR` 和 `secret.key`。
 
 忘记密码：
 
 ```sh
-docker compose exec app /app/.venv/bin/python -m app.cli reset-password --username admin
+cd backend
+uv run python -m app.cli reset-password --username admin
 ```
 
 ## 验证
@@ -218,6 +238,8 @@ uv run pytest -q
 ```
 
 前端在 `frontend` 执行 `pnpm build`，包含 TypeScript 检查；`pnpm test:i18n` 验证浏览器语言选择、英文回退、翻译目录、插值、接口语言和日期格式；`pnpm test:security` 验证依赖补丁阻止原型污染且不影响正常主题合并。前端依赖补丁位于 `frontend/patches`，必须与锁文件一起提交，Docker 在安装依赖前复制该目录。
+
+测试使用 `DATABASE_URL` 指向的数据库，每项测试创建随机临时 schema 并在结束时删除，仅清理自己创建的数据；账号需有建 schema 权限，无需单独配置测试库。
 
 `/api/health` 用于容器健康检查；`/api/docs` 和 `/api/openapi.json` 默认返回 404，只有本地开发显式设置 `TGPAN_ENABLE_API_DOCS=true` 后才提供接口文档。业务数据接口仍要求登录。测试使用模拟 Telegram 存储，真实 Bot Token 测试需在配置页面执行。
 
@@ -241,4 +263,4 @@ Bot API 最大下载 20MB，因此存储块默认 16MiB，配置上限也是 16M
 
 也可手动安装系统的 `aria2c`，macOS 例如 `brew install aria2`，并确保后端进程的 PATH 包含其安装目录。应用管理版本优先于系统版本；网页更新不会升级系统包。完整功能与磁盘策略见 [离线下载](features/offline.md)。
 
-默认单文件仍最大 5GB；离线容量默认 10GiB、磁盘保留默认 512MiB，后两项在网页设置中修改并保存到 SQLite。`TGPAN_TEMP_LIMIT` 仍仅限制公共上传块缓存，不承担完整离线文件容量。备份须包含 `offline/` 中的在途文件与控制文件。`components/` 中的独立环境包含绝对安装路径，换机器或改变数据目录路径后应重新安装组件；数据库、密钥、上传和离线数据仍按原备份流程恢复。
+默认单文件仍最大 5GB；离线容量默认 10GiB、磁盘保留默认 512MiB，后两项在网页设置中修改并保存到 PostgreSQL。`TGPAN_TEMP_LIMIT` 仍仅限制公共上传块缓存，不承担完整离线文件容量。备份须包含 `offline/` 中的在途文件与控制文件。`components/` 中的独立环境包含绝对安装路径，换机器或改变数据目录路径后应重新安装组件；数据库、密钥、上传和离线数据仍按原备份流程恢复。

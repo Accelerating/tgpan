@@ -55,11 +55,11 @@ def listing(
     check_parent(db, owner, parent_id) if not trash else None
     if trash:
         rows = db.all(
-            "SELECT * FROM nodes WHERE owner_id=? AND trash_root=id ORDER BY deleted_at DESC", (owner,)
+            "SELECT * FROM nodes WHERE owner_id=%s AND trash_root=id ORDER BY deleted_at DESC", (owner,)
         )
     else:
         rows = db.all(
-            "SELECT * FROM nodes WHERE owner_id=? AND parent_id IS ? AND deleted_at IS NULL",
+            "SELECT * FROM nodes WHERE owner_id=%s AND parent_id IS NOT DISTINCT FROM %s AND deleted_at IS NULL",
             (owner, parent_id),
         )
     rows = [r for r in rows if q.casefold() in r["name"].casefold()]
@@ -81,7 +81,7 @@ def listing(
 @router.get("/folders")
 def folders(request: Request, user: User):
     return request.app.state.db.all(
-        "SELECT id,name,parent_id FROM nodes WHERE owner_id=? "
+        "SELECT id,name,parent_id FROM nodes WHERE owner_id=%s "
         "AND kind='folder' AND deleted_at IS NULL ORDER BY name",
         (user["id"],),
     )
@@ -109,7 +109,7 @@ async def edit_node(node_id: str, body: NodeEdit, request: Request, user: User):
     if parent in {n["id"] for n in descendants(db, node_id)}:
         raise HTTPException(400, "不能移动到自身或子目录")
     db.execute(
-        "UPDATE nodes SET name=?,parent_id=?,updated_at=? WHERE id=?",
+        "UPDATE nodes SET name=%s,parent_id=%s,updated_at=%s WHERE id=%s",
         (clean_name(body.name) if body.name is not None else node["name"], parent, time.time(), node_id),
     )
     return get_node(db, user["id"], node_id)
@@ -145,15 +145,15 @@ async def batch(body: Selection, request: Request, user: User):
                     for n in tree:
                         if n["deleted_at"] is None:
                             conn.execute(
-                                "UPDATE nodes SET deleted_at=?,trash_root=? WHERE id=?",
+                                "UPDATE nodes SET deleted_at=%s,trash_root=%s WHERE id=%s",
                                 (time.time(), node["id"], n["id"]),
                             )
                             conn.execute(
-                                "UPDATE shares SET revoked_at=? WHERE node_id=? AND revoked_at IS NULL",
+                                "UPDATE shares SET revoked_at=%s WHERE node_id=%s AND revoked_at IS NULL",
                                 (time.time(), n["id"]),
                             )
                             conn.execute(
-                                "DELETE FROM share_sessions WHERE share_id IN (SELECT id FROM shares WHERE node_id=?)",
+                                "DELETE FROM share_sessions WHERE share_id IN (SELECT id FROM shares WHERE node_id=%s)",
                                 (n["id"],),
                             )
             elif body.action == "restore":
@@ -167,8 +167,8 @@ async def batch(body: Selection, request: Request, user: User):
                     if original["deleted_at"] is not None:
                         parent = None
                 with state.db.connect() as conn:
-                    conn.execute("UPDATE nodes SET parent_id=? WHERE id=?", (parent, node["id"]))
+                    conn.execute("UPDATE nodes SET parent_id=%s WHERE id=%s", (parent, node["id"]))
                     conn.execute(
-                        "UPDATE nodes SET deleted_at=NULL,trash_root=NULL WHERE trash_root=?", (node["id"],)
+                        "UPDATE nodes SET deleted_at=NULL,trash_root=NULL WHERE trash_root=%s", (node["id"],)
                     )
     return {"ok": True}

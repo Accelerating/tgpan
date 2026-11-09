@@ -39,7 +39,7 @@ async def login(body: Credentials, request: Request, response: Response):
     address = client_address(request)
     attempt = f"login:{digest(body.username.lower())}:{address}"
     take_attempts(db, [(attempt, 10, 900), (f"login-source:{address}", 60, 60)])
-    user = db.one("SELECT * FROM users WHERE username=?", (body.username,))
+    user = db.one("SELECT * FROM users WHERE lower(username)=lower(%s)", (body.username,))
     valid = False
     if user:
         try:
@@ -52,11 +52,11 @@ async def login(body: Credentials, request: Request, response: Response):
     token = secrets.token_urlsafe(32)
     age = request.app.state.settings.session_days * 86400
     with db.connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("SELECT pg_advisory_xact_lock(74647262)")
         check_credentials_snapshot(conn, user)
-        conn.execute("DELETE FROM sessions WHERE expires<?", (now,))
-        conn.execute("INSERT INTO sessions VALUES (?,?,?)", (digest(token), user["id"], now + age))
-        conn.execute("DELETE FROM login_attempts WHERE address=?", (attempt,))
+        conn.execute("DELETE FROM sessions WHERE expires<%s", (now,))
+        conn.execute("INSERT INTO sessions VALUES (%s,%s,%s)", (digest(token), user["id"], now + age))
+        conn.execute("DELETE FROM login_attempts WHERE address=%s", (attempt,))
     response.set_cookie(
         "tgpan_session",
         token,
@@ -77,7 +77,7 @@ def me(request: Request, user: User):
 @router.post("/auth/logout")
 def logout(request: Request, response: Response, user: User):
     request.app.state.db.execute(
-        "DELETE FROM sessions WHERE token=?", (digest(request.cookies["tgpan_session"]),)
+        "DELETE FROM sessions WHERE token=%s", (digest(request.cookies["tgpan_session"]),)
     )
     response.delete_cookie("tgpan_session", path="/")
     return {"ok": True}
@@ -92,10 +92,10 @@ async def change_password(body: PasswordChange, request: Request, user: User):
             raise HTTPException(400, "当前密码不正确") from None
         hashed = await run_in_threadpool(passwords.hash, body.password)
     with request.app.state.db.connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("SELECT pg_advisory_xact_lock(74647262)")
         check_credentials_snapshot(conn, user)
-        conn.execute("UPDATE users SET password=? WHERE id=?", (hashed, user["id"]))
-        conn.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
+        conn.execute("UPDATE users SET password=%s WHERE id=%s", (hashed, user["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id=%s", (user["id"],))
     return {"ok": True}
 
 
@@ -112,16 +112,16 @@ async def create_user(body: Credentials, request: Request, admin: Admin):
         id=new_id(), username=body.username, password=hashed, admin=0, disabled=0, created_at=time.time()
     )
     with request.app.state.db.connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("SELECT pg_advisory_xact_lock(74647262)")
         check_credentials_snapshot(conn, admin)
-        conn.execute("INSERT INTO users VALUES (:id,:username,:password,:admin,:disabled,:created_at)", user)
+        conn.execute("INSERT INTO users VALUES (%(id)s,%(username)s,%(password)s,%(admin)s,%(disabled)s,%(created_at)s)", user)
     return public(user)
 
 
 @router.patch("/users/{user_id}")
 async def update_user(user_id: str, body: UserUpdate, request: Request, admin: Admin):
     db = request.app.state.db
-    target = db.one("SELECT * FROM users WHERE id=?", (user_id,))
+    target = db.one("SELECT * FROM users WHERE id=%s", (user_id,))
     if not target:
         raise HTTPException(404, "用户不存在")
     if target["admin"] and body.disabled:
@@ -131,12 +131,12 @@ async def update_user(user_id: str, body: UserUpdate, request: Request, admin: A
         with request.app.state.password_slots.acquire(f"account:{admin['id']}"):
             hashed = await run_in_threadpool(passwords.hash, body.password)
     with db.connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("SELECT pg_advisory_xact_lock(74647262)")
         check_credentials_snapshot(conn, admin)
         if body.disabled is not None:
-            conn.execute("UPDATE users SET disabled=? WHERE id=?", (body.disabled, user_id))
+            conn.execute("UPDATE users SET disabled=%s WHERE id=%s", (int(body.disabled), user_id))
         if hashed:
-            conn.execute("UPDATE users SET password=? WHERE id=?", (hashed, user_id))
+            conn.execute("UPDATE users SET password=%s WHERE id=%s", (hashed, user_id))
         if body.disabled or hashed:
-            conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM sessions WHERE user_id=%s", (user_id,))
     return {"ok": True}

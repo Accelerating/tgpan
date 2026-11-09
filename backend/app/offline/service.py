@@ -22,7 +22,7 @@ CAPACITY_ERROR = "离线下载空间不足或任务大小超出容量限制"
 
 
 def get_task(state, owner, identity):
-    task = state.db.one("SELECT * FROM offline_tasks WHERE id=? AND owner_id=?", (identity, owner))
+    task = state.db.one("SELECT * FROM offline_tasks WHERE id=%s AND owner_id=%s", (identity, owner))
     if not task:
         raise HTTPException(404, "离线任务不存在")
     return task
@@ -37,19 +37,19 @@ def policy(state):
 
 
 def files_for(state, identity):
-    return state.db.all("SELECT * FROM offline_files WHERE task_id=? ORDER BY position", (identity,))
+    return state.db.all("SELECT * FROM offline_files WHERE task_id=%s ORDER BY position", (identity,))
 
 
 def set_files(context, identity, files, **task_values):
     with context.db.connect() as conn:
         for file in files:
             conn.execute(
-                "INSERT INTO offline_files(id,task_id,position,path,size) VALUES (?,?,?,?,?)",
+                "INSERT INTO offline_files(id,task_id,position,path,size) VALUES (%s,%s,%s,%s,%s)",
                 (new_id(), identity, file["position"], file["path"], file["size"]),
             )
         if task_values:
             conn.execute(
-                f"UPDATE offline_tasks SET {','.join(f'{key}=?' for key in task_values)},updated_at=? WHERE id=?",
+                f"UPDATE offline_tasks SET {','.join(f'{key}=%s' for key in task_values)},updated_at=%s WHERE id=%s",
                 (*task_values.values(), time.time(), identity),
             )
 
@@ -69,7 +69,7 @@ def validate_selection(state, task, files):
     total = sum(file["size"] for file in files)
     other = sum(
         max(row["total"] if row["state"] in ACTIVE else 0, disk_bytes(task_directory(state, row["id"])))
-        for row in state.db.all("SELECT id,total,state FROM offline_tasks WHERE id!=?", (task["id"],))
+        for row in state.db.all("SELECT id,total,state FROM offline_tasks WHERE id!=%s", (task["id"],))
     )
     existing = disk_bytes(task_directory(state, task["id"]))
     free = shutil.disk_usage(state.settings.data_dir).free
@@ -80,9 +80,9 @@ def validate_selection(state, task, files):
 
 def public_task(state, task):
     files = state.db.all(
-        "SELECT f.*,u.node_id,u.state AS upload_state,coalesce((SELECT sum(size) FROM blocks "
+        "SELECT f.*,u.node_id,u.state AS upload_state,coalesce((SELECT sum(size)::bigint FROM blocks "
         "WHERE upload_id=u.id AND state='sent'),0) AS stored FROM offline_files f "
-        "LEFT JOIN uploads u ON u.id=f.upload_id WHERE f.task_id=? ORDER BY f.position",
+        "LEFT JOIN uploads u ON u.id=f.upload_id WHERE f.task_id=%s ORDER BY f.position",
         (task["id"],),
     )
     stored = sum(
@@ -150,11 +150,11 @@ class OfflineWorker:
             self.running = {identity: task for identity, task in self.running.items() if not task.done()}
             for identity in list(self.running):
                 owner = self.state.db.one(
-                    "SELECT u.disabled FROM users u JOIN offline_tasks t ON t.owner_id=u.id WHERE t.id=?",
+                    "SELECT u.disabled FROM users u JOIN offline_tasks t ON t.owner_id=u.id WHERE t.id=%s",
                     (identity,),
                 )
                 if not owner or owner["disabled"]:
-                    self.state.db.execute("UPDATE offline_tasks SET state='paused' WHERE id=?", (identity,))
+                    self.state.db.execute("UPDATE offline_tasks SET state='paused' WHERE id=%s", (identity,))
                     await self.stop_task(identity)
             if self.state.components.status != "installing":
                 candidates = self.state.db.all(
@@ -165,14 +165,14 @@ class OfflineWorker:
                 slots = policy(self.state)["concurrency"]
                 downloads = sum(
                     not self.state.db.one(
-                        "SELECT download_complete FROM offline_tasks WHERE id=?",
+                        "SELECT download_complete FROM offline_tasks WHERE id=%s",
                         (identity,),
                     )["download_complete"]
                     for identity in self.running
                 )
                 importing = any(
                     self.state.db.one(
-                        "SELECT download_complete FROM offline_tasks WHERE id=?",
+                        "SELECT download_complete FROM offline_tasks WHERE id=%s",
                         (identity,),
                     )["download_complete"]
                     for identity in self.running
@@ -194,7 +194,7 @@ class OfflineWorker:
     def update(self, identity, **values):
         values["updated_at"] = time.time()
         self.state.db.execute(
-            f"UPDATE offline_tasks SET {','.join(f'{key}=?' for key in values)} WHERE id=?",
+            f"UPDATE offline_tasks SET {','.join(f'{key}=%s' for key in values)} WHERE id=%s",
             (*values.values(), identity),
         )
 
@@ -223,7 +223,7 @@ class OfflineWorker:
                     files[0]["size"] = size
                     total = validate_selection(self.state, task, files)
                     self.state.db.execute(
-                        "UPDATE offline_files SET size=? WHERE id=?", (size, files[0]["id"])
+                        "UPDATE offline_files SET size=%s WHERE id=%s", (size, files[0]["id"])
                     )
                     self.update(identity, total=total)
                 args += ["--out=" + files[0]["path"], source]
@@ -249,7 +249,7 @@ class OfflineWorker:
             total = validate_selection(self.state, task, actual)
             with self.state.db.connect() as conn:
                 for file in actual:
-                    conn.execute("UPDATE offline_files SET size=? WHERE id=?", (file["size"], file["id"]))
+                    conn.execute("UPDATE offline_files SET size=%s WHERE id=%s", (file["size"], file["id"]))
             self.update(
                 identity, state="queued", phase="store", download_complete=1, downloaded=total, total=total
             )

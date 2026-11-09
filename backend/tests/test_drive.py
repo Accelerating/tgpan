@@ -253,8 +253,9 @@ def test_cleanup_failure_retains_configuration_reference(setup):
 
 
 def test_full_application_restart(tmp_path):
-    from fastapi.testclient import TestClient
     from conftest import FakeStorage
+    from fastapi.testclient import TestClient
+
     from app.common.config import Settings
     from app.common.security import new_id, passwords
     from app.main import create_app
@@ -264,7 +265,7 @@ def test_full_application_restart(tmp_path):
     application = create_app(settings, storage)
     with TestClient(application) as client:
         application.state.db.execute(
-            "INSERT INTO users VALUES (?,?,?,?,?,?)",
+            "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
             (new_id(), "admin", passwords.hash("restart-password"), 1, 0, time.time()),
         )
         login = client.post(
@@ -303,9 +304,11 @@ def test_full_application_restart(tmp_path):
 
 def test_drive_upload_download_and_purge_through_bot_api(setup):
     import email.policy
-    from email.parser import BytesParser
     import json
+    from email.parser import BytesParser
+
     import httpx
+
     from app.storage.telegram import TelegramStorage
 
     client, app, _ = setup
@@ -347,7 +350,7 @@ def test_drive_upload_download_and_purge_through_bot_api(setup):
     assert client.get(f"/api/files/{task['node_id']}/download").content == data
     response = client.get(f"/api/files/{task['node_id']}/download", headers={"Range": "bytes=7000-19000"})
     assert response.status_code == 206 and response.content == data[7000:19001]
-    blocks = app.state.db.all("SELECT * FROM blocks WHERE upload_id=?", (task["id"],))
+    blocks = app.state.db.all("SELECT * FROM blocks WHERE upload_id=%s", (task["id"],))
     assert len(blocks) == 3 and all(b["file_id"] and b["message_id"] for b in blocks)
     client.post("/api/files/batch", json={"ids": [task["node_id"]], "action": "trash"})
     client.post("/api/files/batch", json={"ids": [task["node_id"]], "action": "purge"})

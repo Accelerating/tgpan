@@ -30,7 +30,7 @@ def configs(request: Request, user: User):
     return [
         redact(c)
         for c in request.app.state.db.all(
-            "SELECT * FROM configs WHERE owner_id=? ORDER BY created_at", (user["id"],)
+            "SELECT * FROM configs WHERE owner_id=%s ORDER BY created_at", (user["id"],)
         )
     ]
 
@@ -43,12 +43,12 @@ async def create(body: ConfigCreate, request: Request, user: User):
     identity = new_id()
     token = state.secrets.cipher.encrypt(body.token.encode()).decode()
     with state.db.connect() as conn:
-        first = not conn.execute("SELECT id FROM configs WHERE owner_id=?", (user["id"],)).fetchone()
-        default = body.is_default or first
+        first = not conn.execute("SELECT id FROM configs WHERE owner_id=%s", (user["id"],)).fetchone()
+        default = int(body.is_default or first)
         if default:
-            conn.execute("UPDATE configs SET is_default=0 WHERE owner_id=?", (user["id"],))
+            conn.execute("UPDATE configs SET is_default=0 WHERE owner_id=%s", (user["id"],))
         conn.execute(
-            "INSERT INTO configs VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO configs VALUES (%s,%s,%s,%s,%s,%s,%s)",
             (identity, user["id"], body.name.strip(), token, body.channel, default, time.time()),
         )
     return redact(get_config(state, user["id"], identity))
@@ -60,10 +60,10 @@ async def update(config_id: str, body: ConfigEdit, request: Request, user: User)
     get_config(state, user["id"], config_id)
     with state.db.connect() as conn:
         if body.is_default:
-            conn.execute("UPDATE configs SET is_default=0 WHERE owner_id=?", (user["id"],))
-            conn.execute("UPDATE configs SET is_default=1 WHERE id=?", (config_id,))
+            conn.execute("UPDATE configs SET is_default=0 WHERE owner_id=%s", (user["id"],))
+            conn.execute("UPDATE configs SET is_default=1 WHERE id=%s", (config_id,))
         if body.name is not None:
-            conn.execute("UPDATE configs SET name=? WHERE id=?", (body.name.strip(), config_id))
+            conn.execute("UPDATE configs SET name=%s WHERE id=%s", (body.name.strip(), config_id))
     return {"ok": True}
 
 
@@ -75,12 +75,12 @@ async def remove(config_id: str, request: Request, user: User):
         if (
             state.worker.active_config == config_id
             or config_id in state.testing_configs
-            or state.db.one("SELECT id FROM uploads WHERE config_id=?", (config_id,))
-            or state.db.one("SELECT id FROM cleanup WHERE config_id=?", (config_id,))
-            or state.db.one("SELECT id FROM offline_tasks WHERE config_id=?", (config_id,))
+            or state.db.one("SELECT id FROM uploads WHERE config_id=%s", (config_id,))
+            or state.db.one("SELECT id FROM cleanup WHERE config_id=%s", (config_id,))
+            or state.db.one("SELECT id FROM offline_tasks WHERE config_id=%s", (config_id,))
         ):
             raise HTTPException(409, "配置仍被文件或清理任务引用，不能删除")
-        state.db.execute("DELETE FROM configs WHERE id=?", (config_id,))
+        state.db.execute("DELETE FROM configs WHERE id=%s", (config_id,))
     return {"ok": True}
 
 
