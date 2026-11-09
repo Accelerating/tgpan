@@ -2,7 +2,13 @@ import { t } from "../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, errorText, fingerprint } from "./api";
 import type { System, Upload } from "./types";
-export function useData<T>(path: string, version = 0, interval = 0) {
+export function useData<T>(
+  path: string,
+  version = 0,
+  interval = 0,
+  keepData = false,
+) {
+  const previousPath = useRef(path);
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
   useEffect(() => {
@@ -23,7 +29,8 @@ export function useData<T>(path: string, version = 0, interval = 0) {
         busy = false;
       }
     };
-    setData(undefined);
+    if (!keepData || previousPath.current !== path) setData(undefined);
+    previousPath.current = path;
     void load();
     const timer = interval
       ? window.setInterval(() => {
@@ -34,7 +41,7 @@ export function useData<T>(path: string, version = 0, interval = 0) {
       controller.abort();
       if (timer) window.clearInterval(timer);
     };
-  }, [path, version, interval]);
+  }, [path, version, interval, keepData]);
   return { data, error };
 }
 export interface LocalJob {

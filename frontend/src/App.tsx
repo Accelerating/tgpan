@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { api, errorText, setCSRF } from "./lib/api";
 import { useData, useUploader } from "./lib/hooks";
-import type { System, User } from "./lib/types";
+import type { System, User, Transfers as TransferData } from "./lib/types";
 import Files from "./pages/Files";
 import Login from "./pages/Login";
 import Settings from "./pages/Settings";
@@ -30,6 +30,9 @@ import PublicShare from "./pages/PublicShare";
 import Shares from "./pages/Shares";
 import Offline from "./pages/Offline";
 import { Dialog } from "./components/Shared";
+import TransferStatus from "./components/TransferStatus";
+import { transferSummary } from "./lib/transfers";
+import { usePageScroll } from "./lib/navigation";
 type Page =
   | "files"
   | "transfers"
@@ -176,7 +179,7 @@ function Toast({
 function Drive({
   user,
   page,
-  navigate,
+  navigate: changePage,
   version,
   refresh,
   notify,
@@ -204,6 +207,18 @@ function Drive({
   const { data: system, error: systemError } = useData<System>("/system");
   const uploader = useUploader(system, refresh);
   const [folderTarget, setFolderTarget] = useState<string | null>(null);
+  const transfers = useData<TransferData>("/transfers", version, 2000, true);
+  const summary = transferSummary(uploader.jobs, transfers.data?.uploads || []);
+  const rememberScroll = usePageScroll(page);
+  const navigate = (next: Page) => {
+    rememberScroll();
+    changePage(next);
+  };
+  const openFolder = (parent: string | null) => {
+    rememberScroll(parent !== folderTarget ? "files" : undefined);
+    setFolderTarget(parent);
+    changePage("files");
+  };
   const nav = [
     { id: "files", label: t("我的文件"), icon: FolderClosed },
     { id: "transfers", label: t("传输任务"), icon: UploadCloud },
@@ -217,11 +232,9 @@ function Drive({
   ];
   const enqueue: typeof uploader.enqueue = (...args) => {
     if (!system) {
-      notify(systemError || t("正在读取上传配置，请稍后重试"), true);
-      return;
+      throw new Error(systemError || t("正在读取上传配置，请稍后重试"));
     }
     uploader.enqueue(...args);
-    navigate("transfers");
   };
   const signOut = async () => {
     try {
@@ -256,12 +269,14 @@ function Drive({
               key={item.id}
               className={`nav-item ${page === item.id ? "active" : ""}`}
               onClick={() => {
-                if (item.id === "files") setFolderTarget(null);
                 navigate(item.id as Page);
               }}
             >
               <item.icon size={19} />
               <span>{item.label}</span>
+              {item.id === "transfers" && summary.count > 0 && (
+                <span className="transfer-count">{summary.count}</span>
+              )}
               {page === item.id && <span className="nav-dot" />}
             </button>
           ))}
@@ -299,11 +314,20 @@ function Drive({
           </div>
         </header>
         <main className="main-content">
-          {page === "files" || page === "trash" ? (
+          <div hidden={page !== "files"}>
             <Files
-              key={`${page}:${folderTarget || "root"}`}
-              initialParent={folderTarget}
-              trash={page === "trash"}
+              parent={folderTarget}
+              onNavigate={setFolderTarget}
+              trash={false}
+              version={version}
+              refresh={refresh}
+              notify={notify}
+              enqueue={enqueue}
+            />
+          </div>
+          {page === "files" ? null : page === "trash" ? (
+            <Files
+              trash
               version={version}
               refresh={refresh}
               notify={notify}
@@ -311,21 +335,20 @@ function Drive({
             />
           ) : page === "transfers" ? (
             <Transfers
-              version={version}
+              data={transfers.data}
+              error={transfers.error}
               refresh={refresh}
               notify={notify}
               {...uploader}
               enqueue={enqueue}
+              onOpenFolder={openFolder}
             />
           ) : page === "offline" ? (
             <Offline
               version={version}
               refresh={refresh}
               notify={notify}
-              onOpenFolder={(parent) => {
-                setFolderTarget(parent);
-                navigate("files");
-              }}
+              onOpenFolder={openFolder}
             />
           ) : page === "shares" ? (
             <Shares version={version} refresh={refresh} notify={notify} />
@@ -341,6 +364,15 @@ function Drive({
             <Users version={version} refresh={refresh} notify={notify} />
           )}
         </main>
+        <TransferStatus
+          summary={summary}
+          uploads={transfers.data?.uploads || []}
+          jobs={uploader.jobs}
+          visible={page !== "transfers"}
+          onOpen={() => navigate("transfers")}
+          notify={notify}
+          refresh={refresh}
+        />
       </div>
       {notice && <Toast notice={notice} close={closeNotice} />}
       {uploader.conflict && (

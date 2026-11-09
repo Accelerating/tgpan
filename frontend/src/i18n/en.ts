@@ -292,4 +292,11 @@ export const en = {
   选择下载文件: "Choose files to download",
   重试: "Retry",
   "预计剩余 {p0} 分钟": "About {p0} minutes remaining",
+  "已添加 {p0} 个上传任务": "Added {p0} upload tasks",
+  打开所在目录: "Open containing folder",
+  "{p0} 个文件已存入 Telegram": "{p0} files saved to Telegram",
+  上传进度: "Upload progress",
+  "{p0} 个传输任务进行中": "{p0} pending transfers",
+  部分任务已暂停或需要重试: "Some tasks are paused or need retrying",
+  查看传输: "View transfers",
 } as const;

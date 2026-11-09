@@ -10,7 +10,6 @@ import {
   X,
 } from "lucide-react";
 import { api, errorText, formatSize } from "../lib/api";
-import { useData } from "../lib/hooks";
 import type { LocalJob } from "../lib/hooks";
 import type { Notify, Transfers as TransferData, Upload } from "../lib/types";
 import {
@@ -39,7 +38,9 @@ const localLabels: Record<LocalJob["state"], string> = {
   error: t("失败"),
 };
 export default function Transfers({
-  version,
+  data,
+  error,
+  onOpenFolder,
   refresh,
   notify,
   jobs,
@@ -47,7 +48,9 @@ export default function Transfers({
   pause,
   clear,
 }: {
-  version: number;
+  data?: TransferData;
+  error: string;
+  onOpenFolder: (parent: string | null) => void;
   refresh: () => void;
   notify: Notify;
   jobs: LocalJob[];
@@ -55,7 +58,6 @@ export default function Transfers({
   pause: (id: number) => void;
   clear: () => void;
 }) {
-  const { data, error } = useData<TransferData>("/transfers", version, 2000);
   const [resume, setResume] = useState<Upload>();
   const [cancel, setCancel] = useState<Upload>();
   const input = useRef<HTMLInputElement>(null);
@@ -115,6 +117,13 @@ export default function Transfers({
                 />
                 {job.error && <p className="inline-error">{job.error}</p>}
               </div>
+              <Button
+                size="sm"
+                variant="light"
+                onPress={() => onOpenFolder(job.parent)}
+              >
+                {t("打开所在目录")}
+              </Button>
               {!["error", "paused"].includes(job.state) && (
                 <Button
                   isIconOnly
@@ -210,6 +219,13 @@ export default function Transfers({
                   </div>
                 </div>
                 <div className="transfer-actions">
+                  <Button
+                    size="sm"
+                    variant="light"
+                    onPress={() => onOpenFolder(task.parent_id)}
+                  >
+                    {t("打开所在目录")}
+                  </Button>
                   {task.state === "error" && (
                     <Button
                       size="sm"
@@ -286,7 +302,11 @@ export default function Transfers({
         aria-label={t("选择原文件续传")}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file && resume) enqueue([file], resume.parent_id, resume);
+          try {
+            if (file && resume) enqueue([file], resume.parent_id, resume);
+          } catch (error) {
+            notify(errorText(error), true);
+          }
           e.target.value = "";
         }}
       />

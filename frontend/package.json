@@ -10,6 +10,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test:security": "node --test tests/security.test.mjs",
     "test:i18n": "node --test tests/i18n.test.mjs",
+    "test:transfers": "node --test tests/transfers.test.mjs",
     "test:uploads": "node --test tests/folderUpload.test.mjs",
     "format": "prettier --write src vite.config.ts"
   },

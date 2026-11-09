@@ -1956,3 +1956,44 @@ nav {
 .offline-meta {
   flex-wrap: wrap;
 }
+
+.transfer-count {
+  margin-left: auto;
+  border-radius: 12px;
+  background: #e8f2ee;
+  color: #39755c;
+  padding: 1px 7px;
+  font-size: 11px;
+}
+.transfer-status {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 32px;
+  border-top: 1px solid #e4ede9;
+  background: #fff;
+  z-index: 30;
+}
+.transfer-status-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+.transfer-status-heading small {
+  color: var(--text-muted);
+}
+.transfer-status .two-progress {
+  margin: 4px 0 0;
+}
+.workspace:has(.transfer-status) ~ .toast {
+  bottom: 128px;
+}
+@media (max-width: 700px) {
+  .transfer-status {
+    padding: 10px 16px;
+  }
+  .transfer-status-heading small {
+    display: block;
+  }
+}

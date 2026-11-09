@@ -48,18 +48,20 @@ export default function Files({
   refresh,
   notify,
   enqueue,
-  initialParent = null,
+  parent = null,
+  onNavigate,
 }: {
   trash: boolean;
   version: number;
   refresh: () => void;
   notify: Notify;
   enqueue: (files: File[], parent: string | null) => void;
-  initialParent?: string | null;
+  parent?: string | null;
+  onNavigate?: (parent: string | null) => void;
 }) {
   const [share, setShare] = useState<Node | null>(null);
   const [preview, setPreview] = useState<Node | null>(null);
-  const [parent, setParent] = useState<string | null>(initialParent);
+
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("name");
   const [descending, setDescending] = useState(false);
@@ -82,7 +84,9 @@ export default function Files({
   ) => {
     setPreparing(true);
     try {
-      await enqueueTree(await tree, destination, enqueue);
+      const resolved = await tree;
+      await enqueueTree(resolved, destination, enqueue);
+      notify(t("已添加 {p0} 个上传任务", { p0: resolved.files.length }));
     } catch (error) {
       notify(errorText(error), true);
     } finally {
@@ -94,6 +98,7 @@ export default function Files({
     `/files?trash=${trash}${parent ? `&parent_id=${parent}` : ""}&q=${encodeURIComponent(search)}&sort=${sort}&descending=${descending}`,
     version,
     5000,
+    true,
   );
   // Empty query parameters are omitted for the root directory.
   const items = data?.items || [];
@@ -118,13 +123,16 @@ export default function Files({
     setSelection([]);
   }, [parent, trash, search]);
   useEffect(() => {
+    setSearch("");
+  }, [parent]);
+  useEffect(() => {
     if (data)
       setSelection((old) =>
         old.filter((id) => data.items.some((n) => n.id === id)),
       );
   }, [data]);
   const navigate = (id: string | null) => {
-    setParent(id);
+    onNavigate?.(id);
     setSearch("");
   };
   const open = (action: typeof dialog, ids?: string[]) => {
@@ -605,7 +613,8 @@ export default function Files({
         className="sr-only"
         aria-label={t("选择上传文件")}
         onChange={(e) => {
-          enqueue(Array.from(e.target.files || []), parent);
+          const files = Array.from(e.target.files || []);
+          if (files.length) void uploadTree(selectedTree(files), parent);
           e.target.value = "";
         }}
       />
