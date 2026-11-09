@@ -1,8 +1,9 @@
 from contextlib import contextmanager
-from pathlib import Path
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+
+from app.common.migrations import migrate
 
 
 class Database:
@@ -25,14 +26,7 @@ class Database:
 
     def migrate(self):
         with self.connect() as conn:
-            conn.execute("SELECT pg_advisory_xact_lock(74647261)")
-            conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-            row = conn.execute("SELECT version FROM schema_version").fetchone()
-            if row is None:
-                conn.execute(Path(__file__).with_name("schema.sql").read_text())
-                conn.execute("INSERT INTO schema_version VALUES (1)")
-            elif row["version"] != 1:
-                raise RuntimeError(f"不支持的数据库版本：{row['version']}")
+            migrate(conn)
 
     def one(self, sql, params=()):
         with self.connect() as conn:

@@ -11,7 +11,7 @@ CREATE ROLE tgpan LOGIN PASSWORD 'change_me';
 CREATE DATABASE tgpan OWNER tgpan;
 ```
 
-在 `.env` 设置 `DATABASE_URL=postgresql://tgpan:change_me@127.0.0.1:5432/tgpan`。本机与远程 PostgreSQL 都使用此配置；账号需拥有该库的建表权限，无需超级用户权限。密码中的特殊字符需 URL 编码。数据库版本迁移在启动时自动执行。密钥、在途上传及离线文件仍保存在 `TGPAN_DATA_DIR`，切换数据库不会取消单 worker 限制。
+在 `.env` 设置 `DATABASE_URL=postgresql://tgpan:change_me@127.0.0.1:5432/tgpan`。本机与远程 PostgreSQL 都使用此配置；账号需拥有该库的建表权限，无需超级用户权限。密码中的特殊字符需 URL 编码。数据库表结构在启动时自动初始化和更新。密钥、在途上传及离线文件保存在 `TGPAN_DATA_DIR`，后端使用单 worker。
 
 ```sh
 cd backend
@@ -111,7 +111,7 @@ systemctl enable --now tgpan
 curl -fsS http://127.0.0.1:8000/api/health
 ```
 
-服务仅监听 `127.0.0.1:8000`，单 worker，内存上限 512MB，开机启动，异常退出自动重启；数据目录在代码目录外，更新代码不会覆盖数据。日志使用 `journalctl -u tgpan` 查看。原生部署不要使用 `scripts/restart.sh`，该脚本面向本地开发，会在服务器构建前端；更新服务使用 `systemctl restart tgpan`。
+服务仅监听 `127.0.0.1:8000`，单 worker，内存上限 512MB，开机启动，异常退出自动重启；数据目录在代码目录外，更新代码不会覆盖数据。日志使用 `journalctl -u tgpan` 查看。原生部署使用 `scripts/update.sh` 更新，脚本通过 systemd 管理服务；`scripts/restart.sh` 用于本地前台运行。
 
 将 `deploy/Caddyfile.example` 的站点块加入现有 Caddyfile。`header_up X-Forwarded-For {remote_host}` 使用直连客户端地址覆盖用户提交的转发头，与后端仅信任回环代理的设置配套。Caddy 自动管理证书及 HTTP 到 HTTPS 跳转；80/443 端口需可访问。先备份原配置并使用正在运行的同一个 Caddy 二进制校验，再平滑重载，保留原有站点和全局配置。
 
@@ -126,7 +126,19 @@ curl -fsS https://pan.zhcn.win/api/health
 
 首次自动部署时，管理员为 `admin`，随机初始密码仅保存在服务器 `/etc/tgpan/admin-initial-password`，root 所有、权限 600。管理员可通过 `ssh dedione 'cat /etc/tgpan/admin-initial-password'` 读取，登录后在设置中修改密码，随后删除此文件；密码不会写入仓库。Telegram 存储配置由管理员在网页中添加。
 
-更新步骤：先按下文备份数据，在开发机器构建新版本前端；服务器在 `/opt/tgpan` 执行 `git pull --ff-only`，在 `backend` 使用相同的 `UV_PYTHON_INSTALL_DIR` 执行 `uv sync --locked --no-dev --python 3.13`，替换对应前端产物，然后 `systemctl restart tgpan` 并检查本机及公网健康接口。备份 `/var/lib/tgpan` 时先停止服务，确保同时保留 `secret.key` 和在途上传文件。
+后续生产更新统一使用一键更新脚本。先按下文备份 PostgreSQL 数据库和数据目录，然后使用有代码写入权限及 systemd 服务管理权限的部署账号执行（通常为 root）：
+
+```sh
+UV_PYTHON_INSTALL_DIR=/opt/tgpan-python /opt/tgpan/scripts/update.sh
+curl -fsS http://127.0.0.1:8000/api/health
+curl -fsS https://pan.zhcn.win/api/health
+```
+
+脚本依次停止 `tgpan.service`、对当前分支执行 `git pull --ff-only`、安装前端依赖并构建和复制静态文件、执行 `uv sync --locked --no-dev`，最后启动服务并检查 systemd 活动状态。后端启动时自动执行数据库表结构升级。服务配置和运行环境继续由 systemd 加载，无需把生产环境配置复制到 `backend/.env`。
+
+服务器需安装 Git、uv、Node.js、pnpm、python3 和 lsof，并配置 Git 远程仓库的非交互读取权限；一键更新会在服务器构建前端，1GB VPS 需确保足够的可用内存。可从任意目录使用脚本绝对路径运行。脚本确认服务工作目录属于本项目，并在停止服务前拒绝未提交或未跟踪文件；仓库必须处于有上游分支的正常分支。分支分叉时拒绝合并，不自动覆盖或暂存本地改动。
+
+拉取、构建或依赖同步失败时不会继续启动服务，解决错误后重新运行脚本。启动失败使用 `journalctl -u tgpan` 排查；脚本不自动回退代码或数据库，也不自动修改 systemd 单元文件。若发布包含单元配置变更，需另行安装单元并执行 `systemctl daemon-reload`。备份 `/var/lib/tgpan` 时先停止服务，确保同时保留 `secret.key` 和在途上传、离线文件。
 
 源码检出和前端目录须允许 `tgpan` 用户读取和遍历。Git 更新及前端展开使用 `umask 022`，代码目录和文件通常为 755/644；备份目录使用 700，配置、密钥和备份归档使用 600，不能把备份的 `umask 077` 全局沿用到 Git 检出。发布前可执行以下检查，确认服务用户可以导入新代码：
 
@@ -212,22 +224,20 @@ pg_dump --dbname="$DATABASE_URL" --format=custom --file=tgpan.dump
 pg_restore --dbname="$DATABASE_URL" --no-owner --no-acl tgpan.dump
 ```
 
-### 从 SQLite 导入
-
-停止旧后端并保留原数据库备份和数据目录，在 `backend` 目录执行：
-
-```sh
-uv run python -m app.cli migrate-sqlite data/tgpan.db
-```
-
-目标 PostgreSQL 库必须没有业务数据，工具拒绝覆盖已有记录。支持旧 SQLite 版本 2～4，逐表导入并校验行数，所有导入在一个事务内完成，失败回滚。原 SQLite 文件保持不变，启动新后端时继续使用原 `TGPAN_DATA_DIR` 和 `secret.key`。
-
 忘记密码：
 
 ```sh
 cd backend
 uv run python -m app.cli reset-password --username admin
 ```
+
+## 数据库自动升级
+
+部署新代码并启动后端时，应用读取 `schema_version`，按版本顺序执行缺少的 PostgreSQL 升级脚本，然后更新版本号；已执行的版本不会重复执行。新库自动创建表并升级到代码支持的最新版本，无需手工运行 SQL。
+
+发布涉及表结构的功能时，在 `backend/app/common/migrations/` 新增连续编号的 SQL 脚本，例如 `002_add_description.sql`，不要修改已发布的 `schema.sql` 或已有升级脚本。脚本规则见该目录的 [说明](../backend/app/common/migrations/README.md)。升级使用应用数据库账号，因此账号须有相应表结构修改权限。
+
+升级前停止旧服务并按备份流程备份数据库和数据目录。初始化及升级由数据库事务锁串行执行，所有待升级脚本与版本号更新在同一个事务内提交。失败时全部回滚，后端停止启动；检查启动日志、修复问题后重新启动即可重试。数据库版本高于代码支持范围时拒绝启动，不会自动降级。回退旧代码前评估表结构兼容性，必要时恢复升级前备份。
 
 ## 验证
 
