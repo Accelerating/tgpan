@@ -59,7 +59,8 @@ def listing(
         )
     else:
         rows = db.all(
-            "SELECT * FROM nodes WHERE owner_id=%s AND parent_id IS NOT DISTINCT FROM %s AND deleted_at IS NULL",
+            "SELECT n.*,EXISTS(SELECT 1 FROM video_entries v WHERE v.node_id=n.id) AS has_video_metadata "
+            "FROM nodes n WHERE owner_id=%s AND parent_id IS NOT DISTINCT FROM %s AND deleted_at IS NULL",
             (owner, parent_id),
         )
     rows = [r for r in rows if q.casefold() in r["name"].casefold()]

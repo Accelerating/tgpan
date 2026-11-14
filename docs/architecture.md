@@ -16,7 +16,8 @@ backend/
     storage/      存储接口、Bot API 实现、配置管理
     transfers/    浏览器与本地文件的公共分块转存、任务恢复、流式下载、后台清理
     offline/      离线下载调度、aria2 子进程、种子清单与受限 HTTP 转发
-    components/   aria2 检测、独立安装和更新
+    videos/       视频解析、下载、Cookie 加密管理与持久元数据
+    components/   aria2、yt-dlp、ffmpeg 检测、独立安装和更新
     main.py       应用生命周期和静态文件入口
     cli.py        管理员初始化、密码重置
   tests/          使用模拟存储的集成测试
@@ -50,4 +51,4 @@ HeroUI 的间接依赖 `deepmerge@4.3.1` 通过 pnpm 补丁同时约束源文件
 
 `shares` 和 `share_sessions`，保存分享标题、加密令牌、密码哈希、有效期及访客授权。私有文件与分享公开读取通过不同入口鉴权，共用 `files/delivery.py`；媒体组件 `MediaViewer` 同时用于私人预览和分享页。
 
-离线任务由 `offline/` 独立持久化和调度，通过系统命令调用 aria2 并解析进度，不使用 RPC。完整文件下载后经 `transfers/local.py` 导入同一 Telegram 块队列；任务、单文件状态与上传记录关联，确认索引提交后清理本地原始文件。`uploads.origin` 区分浏览器上传与离线转存。组件使用数据目录中的独立环境，更新验证成功后原子切换，不需要 root。详情见 [离线下载](features/offline.md)。
+离线任务由 `offline/` 独立持久化和调度，通过系统命令调用 aria2 并解析进度，不使用 RPC。完整文件下载后经 `transfers/local.py` 导入同一 Telegram 块队列；任务、单文件状态与上传记录关联，确认索引提交后清理本地原始文件。`uploads.origin` 区分浏览器上传与离线转存。视频下载共用该调度、资源限额和上传队列，视频业务由 `videos/` 独立维护，前端 `components/downloads/TaskPage` 提供公共任务视图，离线与视频各自提供创建和选择弹窗。数据库版本 2 增加 Cookie、视频任务选项及文件元数据表，详见[视频下载](features/videos.md)。组件使用数据目录中的独立环境，更新验证成功后原子切换，不需要 root。详情见 [离线下载](features/offline.md)。

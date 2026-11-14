@@ -38,7 +38,11 @@ def test_import_preserves_values_and_rejects_overwrite(tmp_path):
 
 
 @pytest.fixture
-def migration_db():
+def migration_db(monkeypatch):
+    from app.common import migrations
+
+    baseline = {1: migrations.migration_files()[1]}
+    monkeypatch.setattr(migrations, "migration_files", lambda: baseline.copy())
     settings = Settings()
     db = Database(settings.database_url, settings.database_schema)
     db.open()

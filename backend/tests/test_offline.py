@@ -302,7 +302,7 @@ def test_http_proxy_blocks_private_destinations_and_requires_auth():
                 with pytest.raises(httpx.ProxyError):
                     await client.get("https://127.0.0.1:1/private")
             async with httpx.AsyncClient(
-                proxy=proxy.url.replace(proxy.token + ":@", ""), trust_env=False
+                proxy=proxy.url.replace(proxy.token + ":" + proxy.token + "@", ""), trust_env=False
             ) as client:
                 assert (await client.get("http://example.org/")).status_code == 403
 

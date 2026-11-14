@@ -14,7 +14,9 @@ from app.common.security import new_id
 
 
 class Components:
-    def __init__(self, state):
+    def __init__(self, state, name="aria2"):
+        self.name = name
+        self.binary = {"aria2": "aria2c", "yt-dlp": "yt-dlp", "ffmpeg": "ffmpeg"}[name]
         self.state = state
         self.root = state.settings.data_dir / "components"
         self.task = None
@@ -23,15 +25,17 @@ class Components:
         self.message = ""
 
     def executable(self):
-        managed = self.root / "aria2" / "bin" / "aria2c"
-        return str(managed) if managed.is_file() else shutil.which("aria2c")
+        managed = self.root / self.name / "bin" / self.binary
+        return str(managed) if managed.is_file() else shutil.which(self.binary)
 
     async def info(self):
         path = self.executable()
         version = None
         if path:
             try:
-                code, output = await command([path, "--version"], timeout=10)
+                code, output = await command(
+                    [path, "-version" if self.name == "ffmpeg" else "--version"], timeout=10
+                )
                 if code == 0:
                     version = output.splitlines()[0].removeprefix("aria2 version ")
             except (OSError, TimeoutError):
@@ -52,7 +56,7 @@ class Components:
         self.task = asyncio.create_task(self._install())
 
     async def _install(self):
-        candidate = self.root / f"aria2-{new_id()}"
+        candidate = self.root / f"{self.name}-{new_id()}"
         try:
             target = {
                 ("Linux", "x86_64"): "linux-64",
@@ -61,7 +65,7 @@ class Components:
                 ("Darwin", "arm64"): "osx-arm64",
             }.get((platform.system(), platform.machine()))
             if not target:
-                raise ValueError("当前系统或 CPU 架构不支持网页安装，请手动安装 aria2")
+                raise ValueError("当前系统或 CPU 架构不支持网页安装，请手动安装组件")
             bootstrap = self.root / "micromamba"
             if not bootstrap.exists():
                 self.message = "正在下载安装工具"
@@ -84,7 +88,7 @@ class Components:
                         shutil.copyfileobj(source, destination)
                     temporary.chmod(0o700)
                     temporary.replace(bootstrap)
-            self.message = "正在安装 aria2 及其运行依赖"
+            self.message = "正在安装组件及其运行依赖"
             env = os.environ | {
                 "MAMBA_ROOT_PREFIX": str(self.root / "packages"),
                 "XDG_CACHE_HOME": str(self.root / "cache"),
@@ -101,25 +105,28 @@ class Components:
                     "--override-channels",
                     "--channel",
                     "conda-forge",
-                    "aria2",
+                    self.name,
+                    *(["deno"] if self.name == "yt-dlp" else []),
                 ],
                 env=env,
                 timeout=1800,
             )
             if code:
-                raise ValueError("aria2 安装失败，请检查网络、磁盘空间或系统兼容性后重试")
-            code, _ = await command([candidate / "bin" / "aria2c", "--version"])
+                raise ValueError("组件安装失败，请检查网络、磁盘空间或系统兼容性后重试")
+            code, _ = await command(
+                [candidate / "bin" / self.binary, "-version" if self.name == "ffmpeg" else "--version"]
+            )
             if code:
                 raise ValueError("新版本检查失败，已保留原版本")
             # Environments cannot be renamed: their libraries can contain absolute prefixes.
-            link = self.root / "aria2.next"
+            link = self.root / f"{self.name}.next"
             link.unlink(missing_ok=True)
             link.symlink_to(candidate.name, target_is_directory=True)
-            previous = (self.root / "aria2").resolve()
-            link.replace(self.root / "aria2")
-            if previous != candidate and previous.name.startswith("aria2-"):
+            previous = (self.root / self.name).resolve()
+            link.replace(self.root / self.name)
+            if previous != candidate and previous.name.startswith(f"{self.name}-"):
                 await asyncio.to_thread(shutil.rmtree, previous, True)
-            self.status, self.message = "idle", "aria2 已安装并通过检查"
+            self.status, self.message = "idle", "组件已安装并通过检查"
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -128,7 +135,7 @@ class Components:
                 str(error) if isinstance(error, ValueError) else "组件安装失败，请检查网络和磁盘空间后重试"
             )
         finally:
-            if (self.root / "aria2").resolve() != candidate:
+            if (self.root / self.name).resolve() != candidate:
                 await asyncio.to_thread(shutil.rmtree, candidate, True)
 
     async def stop(self):

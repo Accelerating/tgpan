@@ -1,6 +1,7 @@
 """Bounded command execution without a shell, including child-process cleanup."""
 
 import asyncio
+import codecs
 import os
 import signal
 from contextlib import suppress
@@ -29,12 +30,15 @@ async def command(args, *, cwd=None, env=None, timeout=60, output=None):
         stderr=asyncio.subprocess.STDOUT,
     )
     tail = b""
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
     try:
         async with asyncio.timeout(timeout):
             while chunk := await process.stdout.read(8192):
                 tail = (tail + chunk)[-16384:]
                 if output:
-                    await output(chunk.decode("utf-8", "replace"))
+                    await output(decoder.decode(chunk))
+            if output and (remaining := decoder.decode(b"", final=True)):
+                await output(remaining)
             code = await process.wait()
         return code, tail.decode("utf-8", "replace")
     finally:

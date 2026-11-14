@@ -156,7 +156,7 @@ class OfflineWorker:
                 if not owner or owner["disabled"]:
                     self.state.db.execute("UPDATE offline_tasks SET state='paused' WHERE id=%s", (identity,))
                     await self.stop_task(identity)
-            if self.state.components.status != "installing":
+            if not any(item.status == "installing" for item in self.state.component_registry.values()):
                 candidates = self.state.db.all(
                     "SELECT t.* FROM offline_tasks t JOIN users u ON u.id=t.owner_id "
                     "WHERE t.state IN ('queued','resolving','downloading','storing') AND u.disabled=0 "
@@ -206,6 +206,13 @@ class OfflineWorker:
             (root / "contents").mkdir(exist_ok=True, mode=0o700)
             if task["download_complete"]:
                 await self.store(task)
+                return
+            if task["kind"] == "video":
+                from app.videos import service as videos
+                if task["phase"] == "resolve":
+                    await videos.resolve(self, task)
+                else:
+                    await videos.download(self, task)
                 return
             if task["phase"] == "resolve":
                 await self.resolve(task)
@@ -429,7 +436,11 @@ class OfflineWorker:
         for file in files_for(state, identity):
             if file["selected"] and not file["complete"]:
                 path = task_directory(state, identity) / "contents" / file["path"]
-                await import_file(state, task, file, path)
+                if task["kind"] == "video":
+                    from app.videos.records import attach_node
+                    await import_file(state, task, file, path, origin="video", on_created=attach_node)
+                else:
+                    await import_file(state, task, file, path)
         self.update(identity, state="complete")
         await asyncio.to_thread(shutil.rmtree, task_directory(state, identity), True)
         self.samples.pop(identity, None)

@@ -6,6 +6,7 @@ export interface User {
   created_at: number;
 }
 export interface Node {
+  has_video_metadata?: boolean;
   id: string;
   name: string;
   kind: "file" | "folder";

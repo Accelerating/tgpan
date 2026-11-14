@@ -274,3 +274,9 @@ Bot API 最大下载 20MB，因此存储块默认 16MiB，配置上限也是 16M
 也可手动安装系统的 `aria2c`，macOS 例如 `brew install aria2`，并确保后端进程的 PATH 包含其安装目录。应用管理版本优先于系统版本；网页更新不会升级系统包。完整功能与磁盘策略见 [离线下载](features/offline.md)。
 
 默认单文件仍最大 5GB；离线容量默认 10GiB、磁盘保留默认 512MiB，后两项在网页设置中修改并保存到 PostgreSQL。`TGPAN_TEMP_LIMIT` 仍仅限制公共上传块缓存，不承担完整离线文件容量。备份须包含 `offline/` 中的在途文件与控制文件。`components/` 中的独立环境包含绝对安装路径，换机器或改变数据目录路径后应重新安装组件；数据库、密钥、上传和离线数据仍按原备份流程恢复。
+
+## 视频下载组件
+
+视频下载需独立的 yt-dlp 与 ffmpeg 命令，项目 Python 环境不安装 yt-dlp。管理员可在设置页的“视频下载组件”分别安装应用管理版本（yt-dlp 环境同时安装 Deno），或自行安装并确保服务 PATH 中能找到 `yt-dlp`、`ffmpeg`、`ffprobe` 和 Deno。应用组件位于 `TGPAN_DATA_DIR/components`，需要写权限和足够磁盘；使用 systemd 或 Docker 时也须保证服务环境可见系统命令。组件更新前暂停活动下载及转存。
+
+升级时自动执行数据库版本 2 的迁移，新增 Cookie 和视频元数据表；按正常流程备份 PostgreSQL 与数据目录中的密钥，再部署新代码。使用方式和资源限制见[视频下载](features/videos.md)。

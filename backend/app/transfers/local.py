@@ -18,7 +18,7 @@ def repair_import(state, upload_id, source):
             copy_range(source, path, block["position"] * state.settings.block_size, block["size"])
 
 
-def begin_import(state, task, file):
+def begin_import(state, task, file, origin="offline", on_created=None):
     parent = task["parent_id"]
     folder, _, name = file["path"].rpartition("/")
     if folder:
@@ -29,7 +29,7 @@ def begin_import(state, task, file):
         with state.db.connect() as conn:
             conn.execute(
                 "INSERT INTO uploads(id,owner_id,node_id,config_id,fingerprint,size,created_at,updated_at,origin) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'offline')",
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     identity,
                     task["owner_id"],
@@ -39,9 +39,12 @@ def begin_import(state, task, file):
                     file["size"],
                     now,
                     now,
+                    origin,
                 ),
             )
             conn.execute("UPDATE offline_files SET upload_id=%s WHERE id=%s", (identity, file["id"]))
+            if on_created:
+                on_created(conn, file, node)
             if not file["size"]:
                 conn.execute("UPDATE uploads SET state='complete' WHERE id=%s", (identity,))
                 conn.execute("UPDATE nodes SET status='ready' WHERE id=%s", (node["id"],))
@@ -51,11 +54,11 @@ def begin_import(state, task, file):
     return identity
 
 
-async def import_file(state, task, file, path):
+async def import_file(state, task, file, path, *, origin="offline", on_created=None):
     if not path.is_file() or path.is_symlink() or path.stat().st_size != file["size"]:
         raise ValueError("下载文件缺失或大小不一致，请取消后重新创建任务")
     async with state.mutation_lock:
-        identity = file["upload_id"] or begin_import(state, task, file)
+        identity = file["upload_id"] or begin_import(state, task, file, origin, on_created)
     while True:
         upload = state.db.one("SELECT * FROM uploads WHERE id=%s", (identity,))
         if not upload or upload["state"] in ("cancelled", "expired"):

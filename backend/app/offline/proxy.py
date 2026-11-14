@@ -16,11 +16,11 @@ from app.offline.network import public_addresses
 class DownloadProxy:
     async def __aenter__(self):
         self.token = secrets.token_hex(24)
-        self.auth = "Basic " + base64.b64encode((self.token + ":").encode()).decode()
+        self.auth = "Basic " + base64.b64encode((self.token + ":" + self.token).encode()).decode()
         self.connections = set()
         self.server = await asyncio.start_server(self.accept, "127.0.0.1", 0, limit=16384)
         port = self.server.sockets[0].getsockname()[1]
-        self.url = f"http://{self.token}:@127.0.0.1:{port}"
+        self.url = f"http://{self.token}:{self.token}@127.0.0.1:{port}"
         return self
 
     async def __aexit__(self, *args):

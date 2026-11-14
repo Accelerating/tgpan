@@ -41,6 +41,8 @@ import {
   AlertDialog,
 } from "../components/Shared";
 import ShareDialog from "../components/ShareDialog";
+import VideoDetails from "../components/videos/Details";
+import type { VideoMetadata } from "../components/videos/types";
 import FilePreview from "../components/FilePreview";
 import ActionMenu, { type MenuAction } from "../components/ActionMenu";
 export default function Files({
@@ -65,6 +67,7 @@ export default function Files({
   transferCount?: number;
 }) {
   const [share, setShare] = useState<Node | null>(null);
+  const [videoMetadata, setVideoMetadata] = useState<VideoMetadata>();
   const [preview, setPreview] = useState<Node | null>(null);
 
   const [search, setSearch] = useState("");
@@ -202,6 +205,17 @@ export default function Files({
         label: t("分享"),
         icon: <Share2 size={16} />,
         onPress: () => setShare(node),
+      });
+    if (node.has_video_metadata)
+      actions.push({
+        key: "video-details",
+        label: t("视频详情"),
+        icon: <Eye size={16} />,
+        onPress: () => {
+          void api<VideoMetadata>(`/videos/files/${node.id}`)
+            .then(setVideoMetadata)
+            .catch((e) => notify(errorText(e), true));
+        },
       });
     if (node.preview_kind)
       actions.push({
@@ -650,6 +664,12 @@ export default function Files({
           node={share}
           onClose={() => setShare(null)}
           notify={notify}
+        />
+      )}
+      {videoMetadata && (
+        <VideoDetails
+          metadata={videoMetadata}
+          onClose={() => setVideoMetadata(undefined)}
         />
       )}
       {preview && (

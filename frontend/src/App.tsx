@@ -27,15 +27,24 @@ import TransferDialog from "./components/transfers/TransferDialog";
 import Users from "./pages/Users";
 import PublicShare from "./pages/PublicShare";
 import Shares from "./pages/Shares";
+import Videos from "./pages/Videos";
 import Offline from "./pages/Offline";
 import { Dialog } from "./components/Shared";
 import TransferStatus from "./components/TransferStatus";
 import { transferSummary } from "./lib/transfers";
 import { usePageScroll } from "./lib/navigation";
-type Page = "files" | "offline" | "trash" | "shares" | "settings" | "users";
+type Page =
+  | "files"
+  | "videos"
+  | "offline"
+  | "trash"
+  | "shares"
+  | "settings"
+  | "users";
 const pages = {
   files: t("我的文件"),
   offline: t("离线下载"),
+  videos: t("视频下载"),
   trash: t("回收站"),
   shares: t("我的分享"),
   settings: t("设置"),
@@ -215,6 +224,7 @@ function Drive({
   const nav = [
     { id: "files", label: t("我的文件"), icon: FolderClosed },
     { id: "offline", label: t("离线下载"), icon: Download },
+    { id: "videos", label: t("视频下载"), icon: Download },
     { id: "trash", label: t("回收站"), icon: Trash2 },
     { id: "shares", label: t("我的分享"), icon: Link2 },
     { id: "settings", label: t("设置"), icon: SettingsIcon },
@@ -323,6 +333,13 @@ function Drive({
               refresh={refresh}
               notify={notify}
               enqueue={enqueue}
+            />
+          ) : page === "videos" ? (
+            <Videos
+              version={version}
+              refresh={refresh}
+              notify={notify}
+              onOpenFolder={openFolder}
             />
           ) : page === "offline" ? (
             <Offline

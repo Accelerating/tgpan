@@ -175,7 +175,8 @@ def test_storage_block_limit_and_database_migration(tmp_path):
     try:
         db.migrate()
         db.migrate()
-        assert db.one("SELECT version FROM schema_version")["version"] == 1
+        from app.common.migrations import migration_files
+        assert db.one("SELECT version FROM schema_version")["version"] == max(migration_files())
         assert db.one("SELECT count(*) FROM offline_settings")["count"] == 1
     finally:
         db.close()

@@ -77,7 +77,7 @@ def listing(request: Request, user: User):
     return [
         translate_fields(public_task(state, task), request, "error")
         for task in state.db.all(
-            "SELECT * FROM offline_tasks WHERE owner_id=%s ORDER BY created_at DESC",
+            "SELECT * FROM offline_tasks WHERE owner_id=%s AND kind!='video' ORDER BY created_at DESC",
             (user["id"],),
         )
     ]

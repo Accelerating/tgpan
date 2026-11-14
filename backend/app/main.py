@@ -27,6 +27,8 @@ from app.storage.routes import router as storage_routes
 from app.storage.telegram import TelegramStorage
 from app.transfers.routes import router as transfers
 from app.transfers.service import Worker
+from app.videos.cookies import cleanup_cookie_files
+from app.videos.routes import router as videos
 
 
 def create_app(settings: Settings | None = None, storage=None):
@@ -48,6 +50,7 @@ def create_app(settings: Settings | None = None, storage=None):
             state.db.open()
             state.db.migrate()
             state.secrets = Secrets(settings.data_dir)
+            cleanup_cookie_files(state)
             state.secrets_digest = digest
             state.storage = storage or TelegramStorage(settings, state.secrets)
             state.mutation_lock = asyncio.Lock()
@@ -62,6 +65,10 @@ def create_app(settings: Settings | None = None, storage=None):
             state.active_downloads = Counter()
             state.worker = Worker(state)
             state.components = Components(state)
+            state.component_registry = {
+                "aria2": state.components,
+                **{name: Components(state, name) for name in ("yt-dlp", "ffmpeg")},
+            }
             state.offline = OfflineWorker(state)
             await state.worker.start()
             await state.offline.start()
@@ -73,7 +80,7 @@ def create_app(settings: Settings | None = None, storage=None):
             yield
         finally:
             await state.offline.stop()
-            await state.components.stop()
+            await asyncio.gather(*(item.stop() for item in state.component_registry.values()))
             await state.worker.stop()
             state.db.close()
             lock_file.close()
@@ -105,10 +112,14 @@ def create_app(settings: Settings | None = None, storage=None):
                 token = request.cookies.get("tgpan_session", "")
                 provided = request.headers.get("x-csrf-token", "")
                 if token and not hmac.compare_digest(request.app.state.secrets.csrf(token), provided):
-                    return JSONResponse({"detail": translate("会话校验失败，请刷新页面", request)}, status_code=403)
+                    return JSONResponse(
+                        {"detail": translate("会话校验失败，请刷新页面", request)}, status_code=403
+                    )
             if request.headers.get("content-length", "0") != "0" and not request.url.path.endswith("/chunks"):
                 if request.headers.get("content-type", "").split(";")[0] != "application/json":
-                    return JSONResponse({"detail": translate("业务请求请使用 application/json", request)}, status_code=415)
+                    return JSONResponse(
+                        {"detail": translate("业务请求请使用 application/json", request)}, status_code=415
+                    )
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -143,18 +154,24 @@ def create_app(settings: Settings | None = None, storage=None):
 
     @app.exception_handler(psycopg.IntegrityError)
     async def conflict(request, error):
-        return JSONResponse({"detail": translate("名称已存在或项目仍被引用，请刷新后重试", request)}, status_code=409)
+        return JSONResponse(
+            {"detail": translate("名称已存在或项目仍被引用，请刷新后重试", request)}, status_code=409
+        )
 
     @app.exception_handler(PoolTimeout)
     @app.exception_handler(psycopg.OperationalError)
     async def unavailable(request, error):
-        return JSONResponse({"detail": translate("数据库暂不可用，请检查连接后重试", request)}, status_code=503)
+        return JSONResponse(
+            {"detail": translate("数据库暂不可用，请检查连接后重试", request)}, status_code=503
+        )
 
     @app.exception_handler(OSError)
     async def disk_error(request, error):
-        return JSONResponse({"detail": translate("文件读写失败，请检查磁盘空间和目录权限", request)}, status_code=503)
+        return JSONResponse(
+            {"detail": translate("文件读写失败，请检查磁盘空间和目录权限", request)}, status_code=503
+        )
 
-    for router in (accounts, files, storage_routes, transfers, shares, components, offline):
+    for router in (accounts, files, storage_routes, transfers, shares, components, offline, videos):
         app.include_router(router)
 
     @app.get("/api/health")
@@ -185,7 +202,8 @@ def create_app(settings: Settings | None = None, storage=None):
         if index.exists() and (not path or "." not in path.rsplit("/", 1)[-1]):
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
         return JSONResponse(
-            {"detail": translate("前端尚未构建或资源不存在，请参阅 docs/deployment.md", request)}, status_code=404
+            {"detail": translate("前端尚未构建或资源不存在，请参阅 docs/deployment.md", request)},
+            status_code=404,
         )
 
     return app
